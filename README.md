@@ -1,17 +1,17 @@
-# 🛰️ Whisp — Intelligent Delay-Tolerant Distributed Mesh Platform
+# 🛰️ Whisp — High-Assurance Zero-Trust Distributed Mesh Platform
 
 <div align="center">
 
-[![Download APK](https://img.shields.io/badge/Download-Latest%20APK%20(v3.0)-white?style=for-the-badge&logo=android)](https://github.com/vsr-yashwanth/Whisp/releases)
+[![Download APK](https://img.shields.io/badge/Download-Latest%20APK%20(v4.0)-white?style=for-the-badge&logo=android)](https://github.com/vsr-yashwanth/Whisp/releases)
 [![Android](https://img.shields.io/badge/Platform-Android%2014%2B-black?style=for-the-badge&logo=android)](https://www.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-black?style=for-the-badge&logo=kotlin)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-black?style=for-the-badge&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
-[![Encryption](https://img.shields.io/badge/Security-AES--256--GCM%20AEAD-black?style=for-the-badge&logo=shield)](https://github.com/google/tink)
-[![Branch v3](https://img.shields.io/badge/Source%20Code-Branch%20v3%20(Latest)-white?style=for-the-badge&logo=git)](https://github.com/vsr-yashwanth/Whisp/tree/v3)
+[![Security](https://img.shields.io/badge/Security-Ed25519%20AEAD%20%2B%20Zero--Trust-black?style=for-the-badge&logo=shield)](https://github.com/google/tink)
+[![Branch v4](https://img.shields.io/badge/Source%20Code-Branch%20v4%20(Latest)-white?style=for-the-badge&logo=git)](https://github.com/vsr-yashwanth/Whisp/tree/v4)
 
-**Whisp** is a programmable, intelligent, delay-tolerant decentralized networking platform engineered for mission-critical peer-to-peer communication, state replication, and distributed apps operating across intermittently connected devices without cellular networks, ISPs, or central servers.
+**Whisp** is a zero-trust, delay-tolerant, decentralized networking platform engineered for mission-critical peer-to-peer communication, state replication, and distributed apps operating across intermittently connected devices without cellular networks, ISPs, or central servers.
 
-[📥 Download APK](#-direct-apk-installation-recommended) • [Source Code (v3 Branch)](https://github.com/vsr-yashwanth/Whisp/tree/v3) • [v2 Branch](https://github.com/vsr-yashwanth/Whisp/tree/v2) • [v1 Branch](https://github.com/vsr-yashwanth/Whisp/tree/V1) • [Features](#-v3-capabilities) • [Architecture](#-v3-system-architecture)
+[📥 Download APK](#-direct-apk-installation-recommended) • [Source Code (v4 Branch)](https://github.com/vsr-yashwanth/Whisp/tree/v4) • [v3 Branch](https://github.com/vsr-yashwanth/Whisp/tree/v3) • [v2 Branch](https://github.com/vsr-yashwanth/Whisp/tree/v2) • [v1 Branch](https://github.com/vsr-yashwanth/Whisp/tree/V1) • [Security & Invariants](#-zero-trust-security-invariants)
 
 </div>
 
@@ -21,18 +21,18 @@
 
 ```mermaid
 graph TD
-    A["📱 Node A (Origin)"] -->|"Can I reach D directly?"| B{"Continuous Route?"}
-    B -- "YES" --> C["🧭 Predictive Multi-Factor Route"]
-    B -- "NO" --> D["📬 DTN Mode (Store & Forward Custody)"]
-    D --> E["👥 Encounter Prediction (EWMA & ICT)"]
-    C --> F["🏃 Mobility-Aware Opportunistic Relay"]
-    E --> F
-    F --> G{"Network Partition?"}
-    G -- "YES" --> H["🔒 Offline CRDT Operation Sync"]
-    G -- "NO" --> I["🚀 Direct / Multi-Hop Delivery"]
-    H --> J["🔄 Reconnect & Automatic Epoch Reconciliation"]
-    J --> K["✅ State Merged & Delivered"]
-    I --> K
+    A["📱 Node A (Origin)"] -->|"Compute Canonical Payload"| B["🔏 Ed25519 Envelope Signature"]
+    B --> C{"Can I reach D directly?"}
+    C -- "YES" --> D["🧭 Predictive Multi-Factor Route"]
+    C -- "NO" --> E["📬 DTN Mode (Store & Forward Custody)"]
+    E --> F["👥 Encounter Prediction (EWMA & ICT)"]
+    D --> G["🏃 Mobility-Aware Opportunistic Relay"]
+    F --> G
+    G --> H{"Hostile / Untrusted Relay?"}
+    H -- "Tampered / Forged" --> I["🛑 Fail-Closed Drop (Invariant 002)"]
+    H -- "Spam / Flood" --> J["🛡️ Token-Bucket Rate Limiter"]
+    H -- "Valid Signature" --> K["🚀 Direct / Multi-Hop Delivery"]
+    K --> L["✅ State Merged & Delivered (CRDT / E2EE)"]
 ```
 
 ---
@@ -45,84 +45,52 @@ You can install Whisp directly on any physical Android phone without needing And
    👉 **[https://github.com/vsr-yashwanth/Whisp/releases](https://github.com/vsr-yashwanth/Whisp/releases)**
 2. Tap on the latest release and download **`app-debug.apk`**.
 3. Tap **Open** / **Install** *(if prompted by Android, tap "Allow installation from unknown sources")*.
-4. Launch **Whisp**, grant permissions, and you are ready to communicate off-grid!
+4. Launch **Whisp**, grant permissions, and communicate securely off-grid!
 
 ---
 
-## 🚀 Key V3 Capabilities
+## 🛡️ Zero-Trust Security Invariants (V4)
 
-### 1. 📬 Delay-Tolerant Networking (DTN) Custody
-- **Bundle Lifecycle Management**: Complete custody tracking (`RECEIVED` $\rightarrow$ `STORED` $\rightarrow$ `FORWARDING` $\rightarrow$ `DELIVERED`).
-- **Bounded Storage Quotas & Eviction**: Configurable DTN quota (500 MB) with multi-factor eviction (priority, TTL, delivery probability, replication count).
-- **Compact Inventory Exchange**: Compact SHA-256 bundle inventory exchange between newly discovered peers.
+Whisp enforces 15 machine-testable security invariants:
 
-### 2. 🔮 Predictive Link Stability & Explainability
-- **EWMA Historical Tracking**: Real-time forecasting of peer link quality, packet loss, latency variance, and disconnect frequency.
-- **Route Explainability**: Generates plain-language reasoning for why specific paths are chosen or penalized in Developer Mode.
-
-### 3. 🏃 Mobility-Aware Opportunistic Routing
-- **Sensor-Driven Movement Classification**: Derives coarse movement states (`STATIONARY`, `WALKING`, `RUNNING`, `VEHICLE`) with zero battery-draining continuous GPS polling.
-- **Anonymous Encounter Tracking**: Records Inter-Contact Times (ICT) to predict future opportunistic delivery probability.
-
-### 4. 🧩 Network Partition Detection & Epoch Healing
-- **Split Detection**: Detects sudden network graph splits and isolates local partition state.
-- **Monotonic Network Epochs**: Synchronizes network state summaries and reconciles buffered queues upon partition healing.
-
-### 5. 📝 Distributed CRDT State Collaboration
-- **Conflict-Free Replicated Data Types (LWW-Map CRDT)**: Enables real-time offline collaboration on shared notes, event checklists, and status boards without a central server.
-- **Deterministic Conflict Resolution**: Lamport logical clocks with actor ID tie-breakers prevent data loss during offline edits.
-
-### 6. 🧪 Discrete Network Simulation & Chaos Engine
-- **In-Memory Simulator**: Simulates 50–100 node mesh topologies with programmable packet loss, latency spikes, and partitioned components.
-- **Reproducible Chaos Testing**: Fixed seeds (`Random(seed)`) enable exact benchmark reproducibility and automated resilience metrics.
-
-### 7. 🔌 Whisp Developer SDK
-- **Decoupled Architecture**: Clean public API (`WhispCore`, `WhispClient`, typed event bus for `PeerDiscovered`, `RouteChanged`, `PartitionDetected`).
-- **Headless Sensor Demo**: Sample telemetry client demonstrating mesh broadcasting independent of the chat UI.
+| Invariant | Security Guarantee |
+| :--- | :--- |
+| **`INVARIANT-001`** | A relay node must never be able to decrypt a 1-to-1 message intended for another recipient. |
+| **`INVARIANT-002`** | A forged or tampered packet must be rejected before processing. |
+| **`INVARIANT-003`** | A previously processed packet cannot be replayed after its deduplication window. |
+| **`INVARIANT-004`** | Expired packets (TTL $\le 0$) must be dropped immediately. |
+| **`INVARIANT-005`** | Malformed or fuzzed packets must never crash the application or cause memory leaks. |
+| **`INVARIANT-006`** | Private identity keys must remain in hardware Keystore and never be exported. |
+| **`INVARIANT-007`** | Compromise of an ephemeral session key must not expose past message history. |
+| **`INVARIANT-008`** | An unauthenticated node cannot impersonate another node's cryptographic identity. |
+| **`INVARIANT-009`** | Routing headers cannot silently alter authenticated payloads. |
+| **`INVARIANT-010`** | Delivery acknowledgments must be cryptographically signed by the final recipient. |
+| **`INVARIANT-011`** | Storage quotas (500 MB) cannot be exceeded via packet flooding. |
+| **`INVARIANT-012`** | Deleting local conversations must leave zero accessible plaintext copies. |
+| **`INVARIANT-013`** | A compromised peer must not compromise unrelated network components. |
+| **`INVARIANT-014`** | Security-critical operations must fail closed. |
+| **`INVARIANT-015`** | Experimental features cannot weaken the security of normal messaging. |
 
 ---
 
-## 🏛️ V3 System Architecture
+## 🚀 Key V4 Platform Capabilities
 
-```
-┌────────────────────────────────────────────────────────┐
-│                   Whisp V3 Architecture                │
-├────────────────────────────────────────────────────────┤
-│  [ Applications & Distributed State ]                  │
-│  - Whisp Encrypted Chat                                │
-│  - CRDT Collaborative Documents & Checklists           │
-│  - Headless Telemetry Sensor Clients                   │
-├────────────────────────────────────────────────────────┤
-│  [ Whisp Developer SDK Layer ]                         │
-│  - WhispClient Facade & Typed Event Bus                │
-├────────────────────────────────────────────────────────┤
-│  [ Intelligent Network & Routing Core ]                │
-│  - PredictionEngine (EWMA Stability & Explainability)  │
-│  - MobilityClassifier & Anonymous Encounter Tracker    │
-│  - PartitionManager (Topology Epochs & Reconciliation) │
-│  - DtnEngine (Bundle Custody & Storage Quotas)         │
-│  - CrdtEngine (Conflict-Free Replicated State Sync)    │
-│  - PriorityPacketQueue (Preemptive SOS + Fair Sharing) │
-│  - DeduplicationCache (Bounded LRU / TTL Filter)       │
-├────────────────────────────────────────────────────────┤
-│  [ Security & Cryptography Layer ]                     │
-│  - Android Keystore Hardware AEAD (At-Rest Storage)    │
-│  - Google Tink ECIES / AES-256-GCM (In-Transit Wire)   │
-├────────────────────────────────────────────────────────┤
-│  [ Hybrid Transport Layer ]                            │
-│  - NearbyConnectionsTransport (BLE + Wi-Fi Direct)     │
-│  - GlobalRelayManager (Duplex Streaming & Reconnect)   │
-│  - Local Subnet UDP Broadcaster (Port 8888)            │
-│  - Discrete Simulated Network & Chaos Engine           │
-└────────────────────────────────────────────────────────┘
-```
+1. **Ed25519 Packet Envelope Signatures**: Cryptographic non-repudiation and tampering defense on every mesh packet.
+2. **Anti-Flooding Token-Bucket Defense**: Per-peer rate limiting (15 packets/sec max, 30 burst) prevents DoS.
+3. **Delay-Tolerant Networking (DTN)**: 500 MB bounded storage with multi-factor custody eviction.
+4. **Predictive Routing & Route Explainability**: Real-time EWMA link stability forecasting.
+5. **Mobility-Aware Routing**: Accelerometer movement classification (`STATIONARY`, `WALKING`, `RUNNING`, `VEHICLE`).
+6. **Network Partition Detection & Epoch Healing**: Monotonic epochs with automatic state sync.
+7. **Offline CRDT Collaboration**: Shared collaborative checklists and notes with deterministic Last-Write-Wins merging.
+8. **Malicious Node Simulation & 10,000-Input Protocol Fuzzer**: Property-based security testing in CI/CD.
 
 ---
 
 ## 📦 Branches
 
-- **[`main` Branch](https://github.com/vsr-yashwanth/Whisp/tree/main)**: Landing documentation & APK releases.
-- **[`v3` Branch (Latest Platform)](https://github.com/vsr-yashwanth/Whisp/tree/v3)**: Complete Whisp V3 Delay-Tolerant Platform.
+- **[`main` Branch](https://github.com/vsr-yashwanth/Whisp/tree/main)**: Documentation & APK releases.
+- **[`v4` Branch (Latest Security Platform)](https://github.com/vsr-yashwanth/Whisp/tree/v4)**: Complete Whisp Security V4 Platform.
+- **[`v3` Branch](https://github.com/vsr-yashwanth/Whisp/tree/v3)**: Whisp V3 Delay-Tolerant Mesh codebase.
 - **[`v2` Branch](https://github.com/vsr-yashwanth/Whisp/tree/v2)**: Whisp V2 Adaptive Mesh codebase.
 - **[`V1` Branch](https://github.com/vsr-yashwanth/Whisp/tree/V1)**: Original Whisp V1 codebase.
 
