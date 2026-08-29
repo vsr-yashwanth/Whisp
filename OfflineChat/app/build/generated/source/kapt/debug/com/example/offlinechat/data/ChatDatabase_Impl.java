@@ -30,20 +30,25 @@ public final class ChatDatabase_Impl extends ChatDatabase {
   @Override
   @NonNull
   protected SupportSQLiteOpenHelper createOpenHelper(@NonNull final DatabaseConfiguration config) {
-    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(2) {
+    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(3) {
       @Override
       public void createAllTables(@NonNull final SupportSQLiteDatabase db) {
         db.execSQL("CREATE TABLE IF NOT EXISTS `conversations` (`id` TEXT NOT NULL, `peerId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `lastMessageAt` INTEGER NOT NULL, PRIMARY KEY(`id`))");
         db.execSQL("CREATE TABLE IF NOT EXISTS `messages` (`id` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `senderId` TEXT NOT NULL, `encryptedPayload` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `status` TEXT NOT NULL, `hopTrace` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`conversationId`) REFERENCES `conversations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_messages_conversationId` ON `messages` (`conversationId`)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `buffered_packets` (`packetId` TEXT NOT NULL, `messageId` TEXT NOT NULL, `recipientId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `priority` INTEGER NOT NULL, `ttl` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `expiresAt` INTEGER NOT NULL, `retryCount` INTEGER NOT NULL, `rawJsonPayload` TEXT NOT NULL, PRIMARY KEY(`packetId`))");
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_buffered_packets_recipientId` ON `buffered_packets` (`recipientId`)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_buffered_packets_expiresAt` ON `buffered_packets` (`expiresAt`)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_buffered_packets_priority` ON `buffered_packets` (`priority`)");
         db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)");
-        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '18ce170cef261d5431be5125ed23c429')");
+        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3b8555a085a62e7e4e5ae631cdb97fd4')");
       }
 
       @Override
       public void dropAllTables(@NonNull final SupportSQLiteDatabase db) {
         db.execSQL("DROP TABLE IF EXISTS `conversations`");
         db.execSQL("DROP TABLE IF EXISTS `messages`");
+        db.execSQL("DROP TABLE IF EXISTS `buffered_packets`");
         final List<? extends RoomDatabase.Callback> _callbacks = mCallbacks;
         if (_callbacks != null) {
           for (RoomDatabase.Callback _callback : _callbacks) {
@@ -121,9 +126,32 @@ public final class ChatDatabase_Impl extends ChatDatabase {
                   + " Expected:\n" + _infoMessages + "\n"
                   + " Found:\n" + _existingMessages);
         }
+        final HashMap<String, TableInfo.Column> _columnsBufferedPackets = new HashMap<String, TableInfo.Column>(10);
+        _columnsBufferedPackets.put("packetId", new TableInfo.Column("packetId", "TEXT", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBufferedPackets.put("messageId", new TableInfo.Column("messageId", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBufferedPackets.put("recipientId", new TableInfo.Column("recipientId", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBufferedPackets.put("conversationId", new TableInfo.Column("conversationId", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBufferedPackets.put("priority", new TableInfo.Column("priority", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBufferedPackets.put("ttl", new TableInfo.Column("ttl", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBufferedPackets.put("createdAt", new TableInfo.Column("createdAt", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBufferedPackets.put("expiresAt", new TableInfo.Column("expiresAt", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBufferedPackets.put("retryCount", new TableInfo.Column("retryCount", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBufferedPackets.put("rawJsonPayload", new TableInfo.Column("rawJsonPayload", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        final HashSet<TableInfo.ForeignKey> _foreignKeysBufferedPackets = new HashSet<TableInfo.ForeignKey>(0);
+        final HashSet<TableInfo.Index> _indicesBufferedPackets = new HashSet<TableInfo.Index>(3);
+        _indicesBufferedPackets.add(new TableInfo.Index("index_buffered_packets_recipientId", false, Arrays.asList("recipientId"), Arrays.asList("ASC")));
+        _indicesBufferedPackets.add(new TableInfo.Index("index_buffered_packets_expiresAt", false, Arrays.asList("expiresAt"), Arrays.asList("ASC")));
+        _indicesBufferedPackets.add(new TableInfo.Index("index_buffered_packets_priority", false, Arrays.asList("priority"), Arrays.asList("ASC")));
+        final TableInfo _infoBufferedPackets = new TableInfo("buffered_packets", _columnsBufferedPackets, _foreignKeysBufferedPackets, _indicesBufferedPackets);
+        final TableInfo _existingBufferedPackets = TableInfo.read(db, "buffered_packets");
+        if (!_infoBufferedPackets.equals(_existingBufferedPackets)) {
+          return new RoomOpenHelper.ValidationResult(false, "buffered_packets(com.example.offlinechat.data.BufferedPacket).\n"
+                  + " Expected:\n" + _infoBufferedPackets + "\n"
+                  + " Found:\n" + _existingBufferedPackets);
+        }
         return new RoomOpenHelper.ValidationResult(true, null);
       }
-    }, "18ce170cef261d5431be5125ed23c429", "87e52d98b65090bd90cd02bfce1735cd");
+    }, "3b8555a085a62e7e4e5ae631cdb97fd4", "d8a112c2545db0d67bdda1c8892508dd");
     final SupportSQLiteOpenHelper.Configuration _sqliteConfig = SupportSQLiteOpenHelper.Configuration.builder(config.context).name(config.name).callback(_openCallback).build();
     final SupportSQLiteOpenHelper _helper = config.sqliteOpenHelperFactory.create(_sqliteConfig);
     return _helper;
@@ -134,7 +162,7 @@ public final class ChatDatabase_Impl extends ChatDatabase {
   protected InvalidationTracker createInvalidationTracker() {
     final HashMap<String, String> _shadowTablesMap = new HashMap<String, String>(0);
     final HashMap<String, Set<String>> _viewTables = new HashMap<String, Set<String>>(0);
-    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "conversations","messages");
+    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "conversations","messages","buffered_packets");
   }
 
   @Override
@@ -152,6 +180,7 @@ public final class ChatDatabase_Impl extends ChatDatabase {
       }
       _db.execSQL("DELETE FROM `conversations`");
       _db.execSQL("DELETE FROM `messages`");
+      _db.execSQL("DELETE FROM `buffered_packets`");
       super.setTransactionSuccessful();
     } finally {
       super.endTransaction();

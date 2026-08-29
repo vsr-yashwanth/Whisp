@@ -195,16 +195,40 @@ fun ChatScreen(
                             unfocusedTextColor = PureWhite
                         )
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // SOS Emergency Button
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(SurfaceElevated)
+                            .border(1.dp, SurfaceBorder, CircleShape)
+                            .clickable {
+                                val sosContent = if (messageText.isNotBlank()) "🚨 SOS: ${messageText.trim()}" else "🚨 SOS: EMERGENCY ASSISTANCE REQUESTED"
+                                viewModel.sendMessage(sosContent, isEmergency = true)
+                                messageText = ""
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Warning,
+                            contentDescription = "SOS",
+                            tint = ErrorMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
                     
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
+                            .size(44.dp)
                             .clip(CircleShape)
                             .background(PureWhite)
                             .clickable {
                                 if (messageText.isNotBlank()) {
-                                    viewModel.sendMessage(messageText.trim())
+                                    viewModel.sendMessage(messageText.trim(), isEmergency = false)
                                     messageText = ""
                                 }
                             },

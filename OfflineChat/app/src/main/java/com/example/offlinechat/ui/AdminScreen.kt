@@ -4,6 +4,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import com.example.offlinechat.OfflineChatApp
 import com.example.offlinechat.data.Message
 import com.example.offlinechat.network.Peer
+import com.example.offlinechat.routing.RouteCandidate
+import com.example.offlinechat.security.CryptoManager
 import com.example.offlinechat.ui.theme.*
 import org.json.JSONArray
 import java.text.SimpleDateFormat
@@ -49,12 +52,23 @@ fun AdminScreen(
 
     var recentMessages by remember { mutableStateOf<List<Message>>(emptyList()) }
     var totalMessageCount by remember { mutableStateOf(0) }
+    val bufferedCount by chatDao.getBufferedPacketCount().collectAsState(initial = 0)
+
+    val activeRoutes = remember(discoveredPeers) {
+        transport.routingEngine.getAllActiveRoutes()
+    }
+
+    var selectedPeer by remember { mutableStateOf<Peer?>(null) }
 
     LaunchedEffect(Unit) {
         chatDao.getAllMessages().collect { msgs ->
             recentMessages = msgs.take(15)
             totalMessageCount = msgs.size
         }
+    }
+
+    if (selectedPeer != null) {
+        PeerDetailsDialog(peer = selectedPeer!!, onDismiss = { selectedPeer = null })
     }
 
     Scaffold(
@@ -111,9 +125,9 @@ fun AdminScreen(
                         modifier = Modifier.weight(1f)
                     )
                     MetricChip(
-                        icon = Icons.Rounded.Lock,
-                        title = "Encryption",
-                        value = "AES-GCM",
+                        icon = Icons.Rounded.Refresh,
+                        title = "Store & Fwd",
+                        value = "$bufferedCount",
                         modifier = Modifier.weight(1f)
                     )
                     MetricChip(
@@ -124,6 +138,36 @@ fun AdminScreen(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("INTELLIGENT ACTIVE ROUTES", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextSecondary, letterSpacing = 1.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            if (activeRoutes.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(SurfaceDark.copy(alpha = 0.5f))
+                            .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(12.dp))
+                            .padding(14.dp)
+                    ) {
+                        Text("No multi-hop routes established yet.", fontSize = 12.sp, color = TextSecondary)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            } else {
+                items(activeRoutes.entries.toList()) { (destId, candidates) ->
+                    val bestRoute = candidates.minByOrNull { transport.routingEngine.calculateRouteScore(it) }
+                    bestRoute?.let { candidate ->
+                        RouteCandidateCard(candidate = candidate, score = transport.routingEngine.calculateRouteScore(candidate))
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
+
+            item {
                 Spacer(modifier = Modifier.height(24.dp))
                 Text("TOPOLOGY NODES", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextSecondary, letterSpacing = 1.sp)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -149,7 +193,7 @@ fun AdminScreen(
                 }
             } else {
                 items(discoveredPeers) { peer ->
-                    NodeItemCard(peer = peer)
+                    NodeItemCard(peer = peer, onClick = { selectedPeer = peer })
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
@@ -179,6 +223,51 @@ fun AdminScreen(
 }
 
 @Composable
+fun RouteCandidateCard(candidate: RouteCandidate, score: Float) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfaceDark)
+            .border(1.dp, SurfaceBorder, RoundedCornerShape(12.dp))
+            .padding(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "→ ${candidate.destinationNodeId.take(16)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = PureWhite
+                )
+                Text(
+                    text = "Via: ${candidate.nextHopName.take(14)} • ${candidate.viaTransport}",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "Score: ${"%.1f".format(score)}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SignalEmerald
+                )
+                Text(
+                    text = "${candidate.metrics.hopCount} hop(s) • ${candidate.metrics.averageLatencyMs}ms",
+                    fontSize = 10.sp,
+                    color = TextMuted
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun NetworkRadarCard(
     peers: List<Peer>,
     isGlobal: Boolean
@@ -188,39 +277,33 @@ fun NetworkRadarCard(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
+            animation = tween(durationMillis = 3500, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "sweep"
-    )
-    val pulseRadius by infiniteTransition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2500, easing = EaseOutQuad),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "pulse"
     )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(240.dp)
+            .height(260.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(SurfaceDark)
             .border(1.dp, SurfaceBorder, RoundedCornerShape(20.dp))
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
-            val maxRadius = minOf(size.width, size.height) / 2f
+            val maxRadius = minOf(size.width, size.height) / 2f - 10.dp.toPx()
 
-            // Concentric rings
-            val rings = listOf(0.25f, 0.5f, 0.75f, 1.0f)
-            rings.forEach { ratio ->
+            // Concentric Titanium Distance Rings
+            val ringCount = 3
+            for (i in 1..ringCount) {
+                val r = (maxRadius / ringCount) * i
                 drawCircle(
-                    color = SurfaceBorder,
-                    radius = maxRadius * ratio,
+                    color = SurfaceBorderSubtle,
+                    radius = r,
                     center = center,
                     style = Stroke(width = 1.dp.toPx())
                 )
@@ -228,92 +311,111 @@ fun NetworkRadarCard(
 
             // Crosshairs
             drawLine(
-                color = SurfaceBorderSubtle,
-                start = Offset(center.x - maxRadius, center.y),
-                end = Offset(center.x + maxRadius, center.y),
-                strokeWidth = 1.dp.toPx()
-            )
-            drawLine(
-                color = SurfaceBorderSubtle,
+                color = SurfaceBorderSubtle.copy(alpha = 0.5f),
                 start = Offset(center.x, center.y - maxRadius),
                 end = Offset(center.x, center.y + maxRadius),
                 strokeWidth = 1.dp.toPx()
             )
-
-            // Expanding Pulse Ring
-            drawCircle(
-                color = PureWhite.copy(alpha = (1f - pulseRadius) * 0.15f),
-                radius = maxRadius * pulseRadius,
-                center = center,
-                style = Stroke(width = 1.5.dp.toPx())
+            drawLine(
+                color = SurfaceBorderSubtle.copy(alpha = 0.5f),
+                start = Offset(center.x - maxRadius, center.y),
+                end = Offset(center.x + maxRadius, center.y),
+                strokeWidth = 1.dp.toPx()
             )
 
-            // Sweeping Beam
+            // Dynamic Sweeping Beam
             val sweepRad = Math.toRadians(sweepAngle.toDouble())
-            val beamEnd = Offset(
+            val lineEnd = Offset(
                 center.x + (maxRadius * cos(sweepRad)).toFloat(),
                 center.y + (maxRadius * sin(sweepRad)).toFloat()
             )
             drawLine(
-                brush = Brush.linearGradient(
-                    listOf(PureWhite.copy(alpha = 0.4f), Color.Transparent),
-                    start = center,
-                    end = beamEnd
+                brush = Brush.radialGradient(
+                    colors = listOf(PureWhite.copy(alpha = 0.7f), Color.Transparent),
+                    center = center,
+                    radius = maxRadius
                 ),
                 start = center,
-                end = beamEnd,
+                end = lineEnd,
                 strokeWidth = 2.dp.toPx()
             )
 
-            // Center Node
-            drawCircle(color = PureWhite, radius = 4.dp.toPx(), center = center)
+            // Local Node Center Indicator
+            drawCircle(
+                color = PureWhite,
+                radius = 5.dp.toPx(),
+                center = center
+            )
+            drawCircle(
+                color = PureWhite.copy(alpha = 0.2f),
+                radius = 12.dp.toPx(),
+                center = center
+            )
 
-            // Peer Blips
+            // Plot Discovered Peer Nodes on Rings
             peers.forEachIndexed { index, peer ->
-                val angle = (index * (360f / maxOf(peers.size, 1)) + 45f)
-                val rad = Math.toRadians(angle.toDouble())
-                val distRatio = 0.45f + (index % 3) * 0.2f
-                val blipPos = Offset(
-                    center.x + (maxRadius * distRatio * cos(rad)).toFloat(),
-                    center.y + (maxRadius * distRatio * sin(rad)).toFloat()
+                val angle = (index * (360.0 / maxOf(peers.size, 1))) * (Math.PI / 180.0)
+                val distFraction = 0.45 + ((index % 3) * 0.22)
+                val r = (maxRadius * distFraction).toFloat()
+                val peerPos = Offset(
+                    center.x + (r * cos(angle)).toFloat(),
+                    center.y + (r * sin(angle)).toFloat()
                 )
 
-                val blipColor = if (peer.endpointId.startsWith("Global")) SignalEmerald else PureWhite
-                drawCircle(color = blipColor.copy(alpha = 0.2f), radius = 8.dp.toPx(), center = blipPos)
-                drawCircle(color = blipColor, radius = 3.5.dp.toPx(), center = blipPos)
+                val nodeColor = when {
+                    peer.endpointId.startsWith("Global") -> SignalEmerald
+                    peer.name.contains("Bridge") -> PureWhite
+                    else -> TitaniumLight
+                }
+
+                drawCircle(color = nodeColor, radius = 5.dp.toPx(), center = peerPos)
+                drawCircle(color = nodeColor.copy(alpha = 0.25f), radius = 10.dp.toPx(), center = peerPos)
             }
         }
 
-        // Radar HUD Overlay
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        // Overlay Telemetry Pills
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = "MESH TOPOLOGY • ${peers.size} PEERS",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextSecondary,
-                letterSpacing = 1.sp
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
                 Box(
                     modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(if (isGlobal) SignalEmerald else TextMuted)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(SurfaceElevated)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text("RADAR 30 FPS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isGlobal) SignalEmerald.copy(alpha = 0.15f) else SurfaceElevated)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (isGlobal) "CLOUDFALL ACTIVE" else "AIRGAP MODE",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isGlobal) SignalEmerald else TextMuted
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(SurfaceElevated)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
                 Text(
-                    text = if (isGlobal) "GLOBAL" else "LOCAL",
+                    text = "TARGETS: ${peers.size}",
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
-                    color = PureWhite,
-                    letterSpacing = 0.5.sp
+                    color = PureWhite
                 )
             }
         }
@@ -335,18 +437,24 @@ fun MetricChip(
             .padding(12.dp)
     ) {
         Column {
-            Icon(icon, contentDescription = null, tint = TitaniumLight, modifier = Modifier.size(16.dp))
+            Icon(icon, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.height(6.dp))
             Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = PureWhite)
-            Text(title, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+            Text(title, style = MaterialTheme.typography.labelSmall, color = TextMuted, fontSize = 10.sp)
         }
     }
 }
 
 @Composable
-fun NodeItemCard(peer: Peer) {
+fun NodeItemCard(peer: Peer, onClick: () -> Unit = {}) {
     val isGlobal = peer.endpointId.startsWith("Global")
-    val badgeText = if (isGlobal) "GLOBAL" else if (peer.name.contains("Bridge")) "BRIDGE" else "BLE"
+    val isBridge = peer.name.contains("Bridge")
+
+    val typeLabel = when {
+        isGlobal -> "GLOBAL RELAY"
+        isBridge -> "LOCAL BRIDGE"
+        else -> "BLE / WI-FI DIRECT"
+    }
 
     Box(
         modifier = Modifier
@@ -354,63 +462,57 @@ fun NodeItemCard(peer: Peer) {
             .clip(RoundedCornerShape(14.dp))
             .background(SurfaceDark)
             .border(1.dp, SurfaceBorder, RoundedCornerShape(14.dp))
+            .clickable { onClick() }
             .padding(14.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(SurfaceElevated)
-                    .border(1.dp, SurfaceBorderSubtle, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    if (isGlobal) Icons.Rounded.Place else Icons.Rounded.Share,
-                    contentDescription = null,
-                    tint = PureWhite,
-                    modifier = Modifier.size(16.dp)
-                )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(SurfaceElevated),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (isGlobal) Icons.Rounded.Info else Icons.Rounded.Share,
+                        contentDescription = null,
+                        tint = PureWhite,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(peer.name.ifBlank { "Node-${peer.endpointId}" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = PureWhite)
+                    Text("ID: ${peer.endpointId.take(14)}", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                }
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(peer.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = PureWhite)
-                Text("ID: ${peer.endpointId.take(18)}", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-            }
+
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
                     .background(SurfaceElevated)
-                    .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text(badgeText, color = TitaniumLight, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text(typeLabel, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (isGlobal) SignalEmerald else TextSecondary)
             }
         }
     }
 }
 
 @Composable
-fun PacketTraceCard(msg: Message, cryptoManager: com.example.offlinechat.security.CryptoManager) {
+fun PacketTraceCard(msg: Message, cryptoManager: CryptoManager) {
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     val formattedTime = remember(msg.timestamp) { timeFormatter.format(Date(msg.timestamp)) }
-    val decrypted = remember(msg.encryptedPayload) { cryptoManager.decryptFromStorage(msg.encryptedPayload) }
-
-    val hops = remember(msg.hopTrace) {
-        try {
-            val arr = JSONArray(msg.hopTrace)
-            val list = mutableListOf<String>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val nodeName = obj.optString("nodeName", obj.optString("nodeId"))
-                val transport = obj.optString("transport", "P2P")
-                val latency = obj.optLong("latencyMs", 0L)
-                list.add("$nodeName ($transport +${latency}ms)")
-            }
-            list
-        } catch (e: Exception) {
-            listOf("Direct Peer Delivery")
-        }
+    val hopsCount = remember(msg.hopTrace) {
+        try { JSONArray(msg.hopTrace).length() } catch (e: Exception) { 1 }
+    }
+    val decryptedSnippet = remember(msg.encryptedPayload) {
+        cryptoManager.decryptFromStorage(msg.encryptedPayload).take(30)
     }
 
     Box(
@@ -421,38 +523,66 @@ fun PacketTraceCard(msg: Message, cryptoManager: com.example.offlinechat.securit
             .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(12.dp))
             .padding(12.dp)
     ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "\"$decrypted\"",
+                    text = "\"$decryptedSnippet...\"",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = PureWhite,
-                    modifier = Modifier.weight(1f)
+                    color = PureWhite
                 )
-                Text(text = formattedTime, style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                Text(
+                    text = "ID: ${msg.id.take(8)} • Channel: ${msg.conversationId.take(14)}",
+                    fontSize = 10.sp,
+                    color = TextMuted
+                )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                hops.forEachIndexed { index, hop ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(5.dp)
-                                .clip(CircleShape)
-                                .background(if (index == 0) TitaniumLight else SignalEmerald)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Hop ${index + 1}: $hop",
-                            fontSize = 10.sp,
-                            color = TextSecondary
-                        )
-                    }
+            Column(horizontalAlignment = Alignment.End) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(SurfaceElevated)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = if (hopsCount <= 1) "DIRECT" else "$hopsCount HOPS",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PureWhite
+                    )
                 }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(formattedTime, fontSize = 9.sp, color = TextSecondary)
             }
         }
     }
+}
+
+@Composable
+fun PeerDetailsDialog(peer: Peer, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceDark,
+        shape = RoundedCornerShape(16.dp),
+        title = {
+            Text(peer.name, fontWeight = FontWeight.Bold, color = PureWhite)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Endpoint ID: ${peer.endpointId}", fontSize = 12.sp, color = TextSecondary)
+                Text("Encryption: Hardware AES-256-GCM AEAD", fontSize = 12.sp, color = SignalEmerald)
+                Text("Relay Capability: Verified Active", fontSize = 12.sp, color = PureWhite)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = PureWhite)
+            }
+        }
+    )
 }

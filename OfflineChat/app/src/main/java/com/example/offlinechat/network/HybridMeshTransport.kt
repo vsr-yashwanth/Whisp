@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.Build
 import android.util.Base64
 import android.util.Log
+import com.example.offlinechat.routing.RouteCandidate
+import com.example.offlinechat.routing.RouteMetrics
+import com.example.offlinechat.routing.RoutingEngine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +36,8 @@ class HybridMeshTransport(private val context: Context) : PeerTransport {
 
     val localId = "Node-${Build.MODEL.replace(" ", "")}"
     val localName = "${Build.MANUFACTURER} ${Build.MODEL}"
+
+    val routingEngine = RoutingEngine()
 
     val globalRelayManager = GlobalRelayManager(context) { globalData ->
         com.example.offlinechat.OfflineChatApp.instance.processIncomingRawPacket(globalData, "GLOBAL_RELAY")
@@ -124,6 +129,7 @@ class HybridMeshTransport(private val context: Context) : PeerTransport {
     override fun disconnectFromPeer() {
         activeBridgeEndpoints.clear()
         nearbyTransport.disconnectFromPeer()
+        routingEngine.clear()
         _connectionState.value = ConnectionState.DISCONNECTED
     }
 
@@ -221,6 +227,28 @@ class HybridMeshTransport(private val context: Context) : PeerTransport {
             }
             hopsArray.put(hopObj)
             json.put("hops", hopsArray)
+
+            // Register/update route candidate in RoutingEngine
+            val senderId = json.optString("senderId", originNodeId)
+            if (senderId.isNotBlank()) {
+                val candidate = RouteCandidate(
+                    destinationNodeId = senderId,
+                    nextHopNodeId = originNodeId.ifBlank { senderId },
+                    nextHopName = originNodeId,
+                    viaTransport = transportType,
+                    metrics = RouteMetrics(
+                        hopCount = hopsArray.length().coerceAtLeast(1),
+                        averageLatencyMs = latency,
+                        packetLossRate = 0.0f,
+                        batteryLevel = json.optInt("batteryLevel", -1),
+                        isCharging = json.optBoolean("isCharging", false),
+                        transportType = transportType
+                    ),
+                    lastUpdated = now
+                )
+                routingEngine.registerOrUpdateRoute(candidate)
+            }
+
             json.toString().toByteArray()
         } catch (e: Exception) {
             data
@@ -259,6 +287,23 @@ class HybridMeshTransport(private val context: Context) : PeerTransport {
                                 activeBridgeEndpoints[peerId] = baseUrl
                                 peerDisplayNames[peerId] = peerName
                                 updateCombinedPeers(nearbyTransport.discoveredPeers.value, globalRelayManager.globalPeers.value)
+
+                                // Register route candidate for this bridge node
+                                val candidate = RouteCandidate(
+                                    destinationNodeId = peerId,
+                                    nextHopNodeId = peerId,
+                                    nextHopName = peerName,
+                                    viaTransport = "LOCAL_BRIDGE",
+                                    metrics = RouteMetrics(
+                                        hopCount = 1,
+                                        averageLatencyMs = 5L,
+                                        packetLossRate = 0.0f,
+                                        batteryLevel = 100,
+                                        isCharging = true,
+                                        transportType = "LOCAL_BRIDGE"
+                                    )
+                                )
+                                routingEngine.registerOrUpdateRoute(candidate)
                             }
                         }
                         conn.disconnect()

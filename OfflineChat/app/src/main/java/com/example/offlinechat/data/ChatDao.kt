@@ -34,4 +34,26 @@ interface ChatDao {
 
     @Query("DELETE FROM messages")
     suspend fun clearAllMessages()
+
+    // Store-and-Forward Buffered Packet Operations
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBufferedPacket(packet: BufferedPacket)
+
+    @Query("SELECT * FROM buffered_packets WHERE recipientId = :recipientId OR recipientId = 'ALL' ORDER BY priority DESC, createdAt ASC")
+    suspend fun getBufferedPacketsForRecipient(recipientId: String): List<BufferedPacket>
+
+    @Query("SELECT * FROM buffered_packets WHERE expiresAt > :now ORDER BY priority DESC, createdAt ASC LIMIT :limit")
+    suspend fun getTopBufferedPackets(now: Long, limit: Int = 100): List<BufferedPacket>
+
+    @Query("DELETE FROM buffered_packets WHERE packetId = :packetId")
+    suspend fun deleteBufferedPacket(packetId: String)
+
+    @Query("DELETE FROM buffered_packets WHERE expiresAt <= :now")
+    suspend fun deleteExpiredBufferedPackets(now: Long): Int
+
+    @Query("UPDATE buffered_packets SET retryCount = retryCount + 1 WHERE packetId = :packetId")
+    suspend fun incrementRetryCount(packetId: String)
+
+    @Query("SELECT COUNT(*) FROM buffered_packets")
+    fun getBufferedPacketCount(): Flow<Int>
 }

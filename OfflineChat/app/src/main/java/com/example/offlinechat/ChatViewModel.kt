@@ -1,13 +1,19 @@
 package com.example.offlinechat
 
+import android.os.Build
+import android.util.Base64
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.offlinechat.data.ChatDao
+import com.example.offlinechat.data.Conversation
 import com.example.offlinechat.data.Message
 import com.example.offlinechat.network.ConnectionState
 import com.example.offlinechat.network.HopRecord
+import com.example.offlinechat.network.MeshPacket
+import com.example.offlinechat.network.PacketPriority
+import com.example.offlinechat.network.PacketType
 import com.example.offlinechat.network.PeerTransport
 import com.example.offlinechat.security.CryptoManager
 import kotlinx.coroutines.Dispatchers
@@ -98,21 +104,25 @@ class ChatViewModel(
             try {
                 val plaintext = cryptoManager.decryptFromStorage(msg.encryptedPayload)
                 val transitEncrypted = cryptoManager.encryptForTransit(plaintext.toByteArray())
-                val transitBase64 = android.util.Base64.encodeToString(transitEncrypted, android.util.Base64.NO_WRAP)
+                val transitBase64 = Base64.encodeToString(transitEncrypted, Base64.NO_WRAP)
 
-                val hopsArr = try { JSONArray(msg.hopTrace) } catch (e: Exception) { JSONArray() }
+                val hopsList = parseHopTrace(msg.hopTrace)
 
-                val json = JSONObject().apply {
-                    put("version", 1)
-                    put("type", "MESSAGE")
-                    put("messageId", msg.id)
-                    put("conversationId", currentConversationId)
-                    put("senderId", msg.senderId)
-                    put("timestamp", msg.timestamp)
-                    put("payload", transitBase64)
-                    put("hops", hopsArr)
-                }
-                transport.sendData(json.toString().toByteArray())
+                val packet = MeshPacket(
+                    protocolVersion = 2,
+                    packetType = PacketType.MESSAGE,
+                    packetId = UUID.randomUUID().toString(),
+                    messageId = msg.id,
+                    conversationId = currentConversationId,
+                    senderId = msg.senderId,
+                    recipientId = if (currentConversationId.startsWith("Node-") || currentConversationId.startsWith("User-")) currentConversationId else "ALL",
+                    timestamp = msg.timestamp,
+                    ttl = 10,
+                    priority = PacketPriority.NORMAL,
+                    payload = transitBase64,
+                    hops = hopsList
+                )
+                transport.sendData(packet.toJsonString().toByteArray())
                 chatDao.updateMessageStatus(msg.id, "SENT")
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Failed to send pending message", e)
@@ -120,7 +130,7 @@ class ChatViewModel(
         }
     }
 
-    fun sendMessage(text: String) {
+    fun sendMessage(text: String, isEmergency: Boolean = false) {
         if (text.isBlank()) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -132,20 +142,19 @@ class ChatViewModel(
                 
                 // 2. Encrypt for network transit (AES-256-GCM)
                 val transitPayload = cryptoManager.encryptForTransit(text.toByteArray())
-                val transitPayloadBase64 = android.util.Base64.encodeToString(transitPayload, android.util.Base64.NO_WRAP)
+                val transitPayloadBase64 = Base64.encodeToString(transitPayload, Base64.NO_WRAP)
                 
-                val initialHop = JSONObject().apply {
-                    put("nodeId", "Node-${android.os.Build.MODEL.replace(" ", "")}")
-                    put("nodeName", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
-                    put("transport", "ORIGIN")
-                    put("timestamp", timestamp)
-                    put("latencyMs", 0L)
-                }
-                val hopsArray = JSONArray().apply { put(initialHop) }
+                val initialHop = HopRecord(
+                    nodeId = "Node-${Build.MODEL.replace(" ", "")}",
+                    nodeName = "${Build.MANUFACTURER} ${Build.MODEL}",
+                    transport = "ORIGIN",
+                    timestamp = timestamp,
+                    latencyMs = 0L
+                )
 
                 // Ensure parent conversation exists
                 chatDao.insertConversation(
-                    com.example.offlinechat.data.Conversation(
+                    Conversation(
                         id = currentConversationId,
                         peerId = currentConversationId,
                         createdAt = timestamp,
@@ -154,6 +163,16 @@ class ChatViewModel(
                 )
 
                 // 3. Save to local SQLite Room DB with initial hop
+                val hopsArray = JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("nodeId", initialHop.nodeId)
+                        put("nodeName", initialHop.nodeName)
+                        put("transport", initialHop.transport)
+                        put("timestamp", initialHop.timestamp)
+                        put("latencyMs", initialHop.latencyMs)
+                    })
+                }
+
                 val dbMsg = Message(
                     id = msgId,
                     conversationId = currentConversationId,
@@ -165,18 +184,24 @@ class ChatViewModel(
                 )
                 chatDao.insertMessage(dbMsg)
 
-                // 4. Broadcast network packet across transport
-                val json = JSONObject().apply {
-                    put("version", 1)
-                    put("type", "MESSAGE")
-                    put("messageId", msgId)
-                    put("conversationId", currentConversationId)
-                    put("senderId", "User-${android.os.Build.MODEL.take(6)}")
-                    put("timestamp", timestamp)
-                    put("payload", transitPayloadBase64)
-                    put("hops", hopsArray)
-                }
-                transport.sendData(json.toString().toByteArray())
+                // 4. Construct versioned MeshPacket protocol instance
+                val packet = MeshPacket(
+                    protocolVersion = 2,
+                    packetType = if (isEmergency) PacketType.SOS else PacketType.MESSAGE,
+                    packetId = UUID.randomUUID().toString(),
+                    messageId = msgId,
+                    conversationId = currentConversationId,
+                    senderId = "User-${Build.MODEL.take(6)}",
+                    recipientId = if (currentConversationId.startsWith("Node-") || currentConversationId.startsWith("User-")) currentConversationId else "ALL",
+                    timestamp = timestamp,
+                    ttl = 10,
+                    priority = if (isEmergency) PacketPriority.SOS else PacketPriority.NORMAL,
+                    payload = transitPayloadBase64,
+                    hops = listOf(initialHop)
+                )
+
+                // Broadcast network packet across transport
+                transport.sendData(packet.toJsonString().toByteArray())
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Failed to send message", e)
             }
@@ -186,7 +211,7 @@ class ChatViewModel(
     fun sendKeyExchange() {
         val pubKey = cryptoManager.generateSessionPublicKey()
         val json = JSONObject().apply {
-            put("version", 1)
+            put("version", 2)
             put("type", "KEY_EXCHANGE")
             put("publicKey", pubKey)
         }
