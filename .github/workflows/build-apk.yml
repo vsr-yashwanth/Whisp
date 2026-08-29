@@ -1,9 +1,14 @@
-name: Build Android APK
+name: Build and Release Android APK
 
 on:
   push:
-    branches: [ "main", "master" ]
+    tags:
+      - 'v*'
+    branches: [ "main", "v4" ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -33,3 +38,26 @@ jobs:
         with:
           name: whisp-app-debug
           path: OfflineChat/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Whisp ${{ github.ref_name }}
+          body: |
+            ## 🛰️ Whisp v4.0 — High-Assurance Zero-Trust Distributed Mesh & Admin Control Plane
+
+            ### 🚀 What's New in v4.0:
+            - **🔐 Local MongoDB Authentication**: Full multi-tier user and operator authentication backed by local MongoDB database.
+            - **🌐 Web Admin Control Plane**: Live network health scoring, 2D topology radar, and DTN custody tracking.
+            - **🛡️ Zero-Trust Security & Envelope Signatures**: Ed25519 cryptographic signatures and token-bucket DoS defense.
+            - **📬 Delay-Tolerant Networking (DTN)**: 500 MB bounded storage with multi-factor custody eviction.
+            - **🧪 Chaos Simulation Lab**: In-browser execution of discrete mesh benchmarks with reproducible random seeds.
+            - **📝 Offline CRDT Collaboration**: Collaborative checklists with deterministic Last-Write-Wins merging.
+
+            ### 📲 Installation:
+            Download `app-debug.apk` below and install on any Android 14+ device.
+          files: |
+            OfflineChat/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
