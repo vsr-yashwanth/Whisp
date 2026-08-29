@@ -2,6 +2,7 @@
 
 <div align="center">
 
+[![Download APK](https://img.shields.io/badge/Download-Latest%20APK%20(v1.0)-white?style=for-the-badge&logo=android)](https://github.com/vsr-yashwanth/Whisp/releases)
 [![Android](https://img.shields.io/badge/Platform-Android%2014%2B-black?style=for-the-badge&logo=android)](https://www.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-black?style=for-the-badge&logo=kotlin)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-black?style=for-the-badge&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
@@ -10,7 +11,7 @@
 
 **Whisp** is a zero-network, decentralized, multi-hop mesh communication protocol engineered for resilient peer-to-peer messaging without cellular networks, ISPs, central servers, or internet infrastructure.
 
-[Source Code (V1 Branch)](https://github.com/vsr-yashwanth/Whisp/tree/V1) • [Features](#-key-capabilities) • [Architecture](#-system-architecture) • [Security](#-cryptographic-architecture) • [Getting Started](#-getting-started)
+[📥 Download APK](#-direct-apk-installation-recommended) • [Source Code (V1 Branch)](https://github.com/vsr-yashwanth/Whisp/tree/V1) • [Features](#-key-capabilities) • [Architecture](#-system-architecture) • [Security](#-cryptographic-architecture) • [Getting Started](#-getting-started)
 
 </div>
 
@@ -34,6 +35,18 @@ graph LR
         Laptop -- "Encrypted Stream" --> Worldwide["🌐 Worldwide Mesh Grid"]
     end
 ```
+
+---
+
+## 📲 Direct APK Installation *(Recommended)*
+
+You can install Whisp directly on any physical Android phone without needing Android Studio or a computer:
+
+1. On your Android phone, open:  
+   👉 **[https://github.com/vsr-yashwanth/Whisp/releases](https://github.com/vsr-yashwanth/Whisp/releases)**
+2. Tap on the latest release and download **`app-debug.apk`**.
+3. Tap **Open** / **Install** *(if prompted by Android, tap "Allow installation from unknown sources")*.
+4. Launch **Whisp**, grant the local radio permissions, and you are ready to communicate off-grid!
 
 ---
 
@@ -151,7 +164,7 @@ Whisp/ (Branch: V1)
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Building from Source
 
 ### 1. Clone the Codebase
 Switch to the **`V1`** branch to access the full source code:
