@@ -35,15 +35,15 @@ graph TD
     H -- "Valid Signature" --> K["🚀 Direct / Multi-Hop Delivery"]
     K --> L["✅ State Merged & Delivered (CRDT / E2EE)"]
     
-    subgraph Control Plane [Zero-Trust Admin Control Plane]
+    subgraph ControlPlane["Zero-Trust Admin Control Plane"]
         M["📊 Web Dashboard & Radar"]
         N["🌐 Interactive 2D Topology Graph"]
         O["🧪 Discrete Chaos Simulation Engine"]
         P["📜 Tamper-Resistant Audit Logs"]
     end
-    D -.-> Control Plane
-    E -.-> Control Plane
-    J -.-> Control Plane
+    D -.-> M
+    E -.-> M
+    J -.-> P
 ```
 
 ---
