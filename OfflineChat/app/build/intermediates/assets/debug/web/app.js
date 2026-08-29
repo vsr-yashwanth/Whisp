@@ -1,323 +1,563 @@
+// Whisp Admin Control Plane v4 - JavaScript Engine
+
 document.addEventListener('DOMContentLoaded', () => {
-    const refreshBtn = document.getElementById('refresh-btn');
-    const refreshDbBtn = document.getElementById('refresh-db-btn');
-    const clearDbBtn = document.getElementById('clear-db-btn');
-    const sendBtn = document.getElementById('send-btn');
-    const targetConvInput = document.getElementById('target-conv');
-    const msgInput = document.getElementById('msg-input');
-    const sendStatus = document.getElementById('send-status');
+    initNavigation();
+    initRadarCanvas();
+    initTopologyCanvas();
+    initSimulationEngine();
+    initEmergencyControls();
+    initSearchFilters();
 
-    const devicesContainer = document.getElementById('devices-container');
-    const dbContainer = document.getElementById('db-container');
-    const msgCount = document.getElementById('msg-count');
-    const connCount = document.getElementById('conn-count');
-    const gatewayStatus = document.getElementById('gateway-status');
-    const gatewayBadge = document.getElementById('gateway-badge');
+    // Initial Telemetry Load
+    fetchAllTelemetry();
 
-    let currentDevices = [];
+    // Live refresh loop every 3 seconds
+    setInterval(fetchAllTelemetry, 3000);
+});
 
-    // Radar Canvas Setup
-    const canvas = document.getElementById('mesh-radar-canvas');
-    const ctx = canvas.getContext('2d');
-    let sweepAngle = 0;
-    let pulseRadius = 0;
+// State
+let globalNodes = [];
+let globalRoutes = [];
+let pendingActionNodeId = null;
 
-    function drawRadar() {
-        const width = canvas.width;
-        const height = canvas.height;
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const maxRadius = Math.min(width, height) / 2 - 10;
+// ==========================================
+// 1. TAB NAVIGATION
+// ==========================================
+function initNavigation() {
+    const navItems = document.querySelectorAll('.nav-item');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+    const pageTitle = document.getElementById('page-title');
 
-        ctx.clearRect(0, 0, width, height);
+    navItems.forEach(item => {
+        item.addEventListener('click', () => {
+            const targetTab = item.getAttribute('data-tab');
 
-        // Minimalist Grid Lines
-        ctx.strokeStyle = '#12141A';
-        ctx.lineWidth = 1;
-        for (let x = 0; x < width; x += 40) {
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, height);
-            ctx.stroke();
-        }
-        for (let y = 0; y < height; y += 40) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(width, y);
-            ctx.stroke();
-        }
+            navItems.forEach(n => n.classList.remove('active'));
+            tabPanes.forEach(p => p.classList.remove('active'));
 
-        // Concentric Range Rings
-        const rings = [0.25, 0.5, 0.75, 1.0];
-        ctx.strokeStyle = '#1E2128';
-        ctx.lineWidth = 1;
-        rings.forEach(r => {
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, maxRadius * r, 0, Math.PI * 2);
-            ctx.stroke();
+            item.classList.add('active');
+            const activePane = document.getElementById(`tab-${targetTab}`);
+            if (activePane) activePane.classList.add('active');
+
+            if (pageTitle) {
+                pageTitle.textContent = item.textContent.trim();
+            }
+
+            // Trigger canvas redraws when switching tabs
+            if (targetTab === 'topology') {
+                drawInteractiveTopology();
+            }
         });
+    });
+}
 
-        // Crosshairs
-        ctx.strokeStyle = '#1E2128';
+// ==========================================
+// 2. FETCH ALL TELEMETRY
+// ==========================================
+async function fetchAllTelemetry() {
+    fetchDashboard();
+    fetchNodes();
+    fetchRoutes();
+    fetchDtn();
+    fetchPartitions();
+    fetchCrdt();
+    fetchSecurity();
+    fetchAudit();
+}
+
+async function fetchDashboard() {
+    try {
+        const res = await fetch('/api/v1/admin/dashboard');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        document.getElementById('health-score').textContent = data.healthScore;
+        document.getElementById('active-nodes').textContent = data.activeNodesCount;
+        document.getElementById('active-peers-sub').textContent = `${data.connectedPeersCount} Connected Peers`;
+        document.getElementById('dtn-count').textContent = data.dtnStoredBundles;
+        
+        const kbUsed = Math.round(data.dtnStorageBytesUsed / 1024);
+        document.getElementById('dtn-storage-sub').textContent = `${kbUsed} KB / 500 MB`;
+        document.getElementById('delivery-rate').textContent = `${data.deliveryRatePercent.toFixed(1)}%`;
+        document.getElementById('avg-latency').textContent = `${Math.round(data.averageLatencyMs)}ms`;
+        document.getElementById('top-epoch').textContent = data.currentNetworkEpoch;
+        document.getElementById('global-status-text').textContent = data.status;
+
+        const threatPill = document.getElementById('threat-level');
+        if (threatPill) threatPill.textContent = data.securityThreatLevel;
+    } catch (e) {
+        console.warn('Dashboard fetch error', e);
+    }
+}
+
+async function fetchNodes() {
+    try {
+        const res = await fetch('/api/v1/admin/nodes');
+        if (!res.ok) return;
+        globalNodes = await res.json();
+
+        const tbody = document.getElementById('nodes-table-body');
+        if (!tbody) return;
+
+        if (globalNodes.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="loading-td">No external mesh nodes discovered yet. Running standalone node.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = globalNodes.map(node => `
+            <tr>
+                <td><code>${node.id.substring(0, 14)}...</code></td>
+                <td><strong>${escapeHtml(node.name)}</strong></td>
+                <td><span class="tag">${node.transport}</span></td>
+                <td>
+                    <span class="${node.predictedStabilityPct >= 80 ? 'text-emerald' : 'text-amber'}">
+                        ${node.predictedStabilityPct}%
+                    </span>
+                </td>
+                <td>
+                    <span class="${node.isIsolated ? 'badge-danger' : 'badge-emerald'}">
+                        ${node.status}
+                    </span>
+                </td>
+                <td>
+                    ${node.isIsolated 
+                        ? `<button class="btn secondary-btn" onclick="restoreNode('${node.id}')">Restore</button>`
+                        : `<button class="btn danger-btn" onclick="openIsolateModal('${node.id}', '${escapeHtml(node.name)}')">Isolate</button>`
+                    }
+                </td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.warn('Nodes fetch error', e);
+    }
+}
+
+async function fetchRoutes() {
+    try {
+        const res = await fetch('/api/v1/admin/routes');
+        if (!res.ok) return;
+        globalRoutes = await res.json();
+
+        const tbody = document.getElementById('routes-table-body');
+        if (!tbody) return;
+
+        if (globalRoutes.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="loading-td">No active multi-hop routing paths.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = globalRoutes.map(r => `
+            <tr>
+                <td><code>${r.destination.substring(0, 12)}...</code></td>
+                <td><strong>${escapeHtml(r.nextHopName)}</strong> (<code>${r.nextHop.substring(0, 8)}</code>)</td>
+                <td><span class="tag">${r.transport}</span></td>
+                <td>${r.latencyMs}ms</td>
+                <td><strong class="text-emerald">${r.stabilityPct}%</strong></td>
+                <td><small style="color: var(--text-secondary);">${escapeHtml(r.explanation)}</small></td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.warn('Routes fetch error', e);
+    }
+}
+
+async function fetchDtn() {
+    try {
+        const res = await fetch('/api/v1/admin/dtn');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const kbUsed = Math.round(data.storageBytesUsed / 1024);
+        const percent = Math.min(100, Math.max(1, (data.storageBytesUsed / data.storageLimitBytes) * 100));
+        
+        document.getElementById('dtn-progress-fill').style.width = `${percent}%`;
+        document.getElementById('dtn-quota-text').textContent = `${kbUsed} KB / 500 MB used (${data.totalBundles} bundles)`;
+
+        const tbody = document.getElementById('dtn-table-body');
+        if (!tbody) return;
+
+        if (data.bundles.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="loading-td">No bundles in DTN custody storage.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = data.bundles.map(b => `
+            <tr>
+                <td><code>${b.bundleId.substring(0, 10)}...</code></td>
+                <td>${escapeHtml(b.source.substring(0, 12))}</td>
+                <td>${escapeHtml(b.destination.substring(0, 12))}</td>
+                <td><span class="badge-emerald">${b.custodyState}</span></td>
+                <td>${b.ttl}s</td>
+                <td>${b.replicationCount}</td>
+                <td>${(b.deliveryProbability * 100).toFixed(0)}%</td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.warn('DTN fetch error', e);
+    }
+}
+
+async function fetchPartitions() {
+    try {
+        const res = await fetch('/api/v1/admin/partitions');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        document.getElementById('partition-epoch-val').textContent = data.currentEpoch;
+        const pill = document.getElementById('partition-state-pill');
+        if (pill) {
+            pill.textContent = data.isPartitioned ? 'PARTITION SPLIT DETECTED' : 'SINGLE UNIFIED MESH';
+            pill.className = data.isPartitioned ? 'epoch-state-pill badge-danger' : 'epoch-state-pill';
+        }
+        document.getElementById('reconcile-status-text').textContent = data.reconciliationStatus;
+    } catch (e) {
+        console.warn('Partitions fetch error', e);
+    }
+}
+
+async function fetchCrdt() {
+    try {
+        const res = await fetch('/api/v1/admin/crdt');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const tbody = document.getElementById('crdt-table-body');
+        if (!tbody) return;
+
+        if (data.documents.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="loading-td">No active CRDT documents registered.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = data.documents.map(d => `
+            <tr>
+                <td><strong>${escapeHtml(d.documentId)}</strong></td>
+                <td>${d.keysCount}</td>
+                <td><code>${d.keys.join(', ')}</code></td>
+                <td><span class="badge-emerald">LWW-MAP ACTIVE</span></td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.warn('CRDT fetch error', e);
+    }
+}
+
+async function fetchSecurity() {
+    try {
+        const res = await fetch('/api/v1/admin/security/events');
+        if (!res.ok) return;
+        const events = await res.json();
+
+        const tbody = document.getElementById('security-table-body');
+        if (!tbody) return;
+
+        tbody.innerHTML = events.map(e => {
+            const time = new Date(e.timestamp).toLocaleTimeString();
+            return `
+                <tr>
+                    <td><code>${e.id}</code></td>
+                    <td>${time}</td>
+                    <td><span class="${e.severity === 'CRITICAL' ? 'badge-danger' : 'badge-emerald'}">${e.severity}</span></td>
+                    <td><span class="tag">${e.category}</span></td>
+                    <td>${escapeHtml(e.description)}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.warn('Security fetch error', e);
+    }
+}
+
+async function fetchAudit() {
+    try {
+        const res = await fetch('/api/v1/admin/audit');
+        if (!res.ok) return;
+        const logs = await res.json();
+
+        const tbody = document.getElementById('audit-table-body');
+        if (!tbody) return;
+
+        tbody.innerHTML = logs.map(l => {
+            const time = new Date(l.timestamp).toLocaleTimeString();
+            return `
+                <tr>
+                    <td>${time}</td>
+                    <td><strong>${escapeHtml(l.adminIdentity)}</strong></td>
+                    <td><span class="tag">${l.action}</span></td>
+                    <td><code>${escapeHtml(l.resource)}</code></td>
+                    <td><span class="badge-emerald">${l.result}</span></td>
+                    <td><small style="color: var(--text-secondary);">${escapeHtml(l.reason)}</small></td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.warn('Audit fetch error', e);
+    }
+}
+
+// ==========================================
+// 3. OVERVIEW RADAR CANVAS
+// ==========================================
+let radarAngle = 0;
+function initRadarCanvas() {
+    const canvas = document.getElementById('overview-radar-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const maxR = Math.min(cx, cy) - 20;
+
+        // Draw Rings
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1;
+        for (let i = 1; i <= 3; i++) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, (maxR / 3) * i, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Draw Crosshairs
         ctx.beginPath();
-        ctx.moveTo(centerX - maxRadius, centerY);
-        ctx.lineTo(centerX + maxRadius, centerY);
-        ctx.moveTo(centerX, centerY - maxRadius);
-        ctx.lineTo(centerX, centerY + maxRadius);
+        ctx.moveTo(cx - maxR, cy);
+        ctx.lineTo(cx + maxR, cy);
+        ctx.moveTo(cx, cy - maxR);
+        ctx.lineTo(cx, cy + maxR);
         ctx.stroke();
 
-        // Expanding Pulse
-        pulseRadius = (pulseRadius + 0.006) % 1;
-        ctx.strokeStyle = `rgba(255, 255, 255, ${(1 - pulseRadius) * 0.15})`;
-        ctx.lineWidth = 1.5;
+        // Draw Sweeping Line
+        radarAngle += 0.03;
+        const endX = cx + maxR * Math.cos(radarAngle);
+        const endY = cy + maxR * Math.sin(radarAngle);
+
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, maxRadius * pulseRadius, 0, Math.PI * 2);
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(endX, endY);
         ctx.stroke();
 
-        // Sweeping Radar Beam
-        sweepAngle = (sweepAngle + 0.03) % (Math.PI * 2);
-        const beamX = centerX + Math.cos(sweepAngle) * maxRadius;
-        const beamY = centerY + Math.sin(sweepAngle) * maxRadius;
-
-        const gradient = ctx.createLinearGradient(centerX, centerY, beamX, beamY);
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
-        gradient.addColorStop(1, 'transparent');
-
-        ctx.strokeStyle = gradient;
-        ctx.lineWidth = 1.5;
+        // Center Origin Node
+        ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(beamX, beamY);
-        ctx.stroke();
-
-        // Center Origin Node (White Dot)
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
         ctx.fill();
 
-        // Render Mesh Nodes
-        currentDevices.forEach((dev, idx) => {
-            const angle = (idx * (Math.PI * 2 / Math.max(currentDevices.length, 1))) + 0.8;
-            const dist = maxRadius * (0.45 + (idx % 3) * 0.2);
-            const nx = centerX + Math.cos(angle) * dist;
-            const ny = centerY + Math.sin(angle) * dist;
+        // Draw Discovered Nodes
+        globalNodes.forEach((node, idx) => {
+            const angle = (idx * (360 / Math.max(1, globalNodes.length))) * (Math.PI / 180);
+            const dist = maxR * (0.5 + (idx % 2) * 0.3);
+            const px = cx + dist * Math.cos(angle);
+            const py = cy + dist * Math.sin(angle);
 
-            const isGlobal = dev.id.startsWith('Global');
-            const blipColor = isGlobal ? '#10B981' : '#FFFFFF';
-
-            // Link Line
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-            ctx.lineWidth = 1;
+            ctx.fillStyle = node.isIsolated ? '#ef4444' : '#10b981';
             ctx.beginPath();
-            ctx.moveTo(centerX, centerY);
-            ctx.lineTo(nx, ny);
-            ctx.stroke();
-
-            // Halo
-            ctx.fillStyle = isGlobal ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.12)';
-            ctx.beginPath();
-            ctx.arc(nx, ny, 8, 0, Math.PI * 2);
+            ctx.arc(px, py, 5, 0, Math.PI * 2);
             ctx.fill();
-
-            // Blip Dot
-            ctx.fillStyle = blipColor;
-            ctx.beginPath();
-            ctx.arc(nx, ny, 3.5, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Label
-            ctx.fillStyle = '#8B92A0';
-            ctx.font = '10px -apple-system, sans-serif';
-            ctx.fillText(dev.name, nx + 10, ny + 3);
         });
 
-        requestAnimationFrame(drawRadar);
+        requestAnimationFrame(draw);
     }
+    requestAnimationFrame(draw);
+}
 
-    requestAnimationFrame(drawRadar);
+// ==========================================
+// 4. INTERACTIVE 2D TOPOLOGY CANVAS
+// ==========================================
+function initTopologyCanvas() {
+    const canvas = document.getElementById('interactive-topo-canvas');
+    if (!canvas) return;
 
-    // Fetch Stats
-    const fetchStats = async () => {
-        try {
-            const res = await fetch('/api/stats');
-            const data = await res.json();
-            msgCount.textContent = data.messageCount;
-            connCount.textContent = data.activePeers + 1;
+    document.getElementById('topo-reset-btn')?.addEventListener('click', () => {
+        drawInteractiveTopology();
+    });
+}
 
-            if (data.isGlobalGatewayActive) {
-                gatewayStatus.textContent = 'ONLINE';
-                gatewayBadge.textContent = 'Decentralized Gateway Active';
-            } else {
-                gatewayStatus.textContent = 'LOCAL';
-                gatewayBadge.textContent = 'P2P Mesh Only';
-            }
-        } catch (e) {
-            console.error('Failed to fetch stats', e);
+function drawInteractiveTopology() {
+    const canvas = document.getElementById('interactive-topo-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+
+    // Draw Central Local Node
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '11px JetBrains Mono';
+    ctx.fillText('Local Node (Hub)', cx - 45, cy + 28);
+
+    // Draw Peer Nodes around hub
+    globalNodes.forEach((node, i) => {
+        const angle = (i * (360 / Math.max(1, globalNodes.length))) * (Math.PI / 180);
+        const dist = 160 + (i % 2) * 60;
+        const nx = cx + dist * Math.cos(angle);
+        const ny = cy + dist * Math.sin(angle);
+
+        // Link line
+        ctx.strokeStyle = node.isIsolated ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(nx, ny);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Node Circle
+        ctx.fillStyle = node.isIsolated ? '#ef4444' : '#10b981';
+        ctx.beginPath();
+        ctx.arc(nx, ny, 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Node Label
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px JetBrains Mono';
+        ctx.fillText(node.name, nx - 30, ny + 20);
+    });
+}
+
+// ==========================================
+// 5. NODE ISOLATION MODAL
+// ==========================================
+function openIsolateModal(nodeId, nodeName) {
+    pendingActionNodeId = nodeId;
+    const modal = document.getElementById('node-modal');
+    document.getElementById('modal-title').textContent = `Isolate Node (${nodeName})`;
+    document.getElementById('modal-desc').textContent = `Are you sure you want to administratively quarantine node ${nodeId}? It will be removed from all routing tables.`;
+    modal.classList.remove('hidden');
+}
+
+document.getElementById('modal-cancel-btn')?.addEventListener('click', () => {
+    document.getElementById('node-modal').classList.add('hidden');
+    pendingActionNodeId = null;
+});
+
+document.getElementById('modal-confirm-btn')?.addEventListener('click', async () => {
+    if (!pendingActionNodeId) return;
+    const reason = document.getElementById('modal-reason-input').value || 'Operator quarantine';
+
+    try {
+        const res = await fetch(`/api/v1/admin/nodes/${pendingActionNodeId}/isolate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason })
+        });
+        if (res.ok) {
+            document.getElementById('node-modal').classList.add('hidden');
+            fetchAllTelemetry();
         }
-    };
+    } catch (e) {
+        alert('Failed to isolate node: ' + e.message);
+    }
+});
 
-    // Fetch Mesh Devices
-    const fetchDevices = async () => {
-        try {
-            const res = await fetch('/api/devices');
-            const devices = await res.json();
-            currentDevices = devices;
-            
-            if (devices.length === 0) {
-                devicesContainer.innerHTML = '<div class="loading">Scanning for peers...</div>';
-            } else {
-                devicesContainer.innerHTML = devices.map(device => {
-                    const isGlobal = device.id.startsWith('Global');
-                    const badge = isGlobal ? 'GLOBAL' : (device.name.includes('Bridge') ? 'BRIDGE' : 'BLE');
+async function restoreNode(nodeId) {
+    try {
+        const res = await fetch(`/api/v1/admin/nodes/${nodeId}/restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: 'Operator restoration' })
+        });
+        if (res.ok) fetchAllTelemetry();
+    } catch (e) {
+        alert('Failed to restore node: ' + e.message);
+    }
+}
 
-                    return `
-                        <div class="device-item">
-                            <div class="device-info">
-                                <h4>${escapeHtml(device.name)}</h4>
-                                <p>ID: ${escapeHtml(device.id)}</p>
-                            </div>
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span class="tag">${badge}</span>
-                                <div class="status-indicator">
-                                    <div class="status-dot"></div>
-                                    ${escapeHtml(device.status)}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-            }
-        } catch (e) {
-            console.error('Failed to fetch devices', e);
-            devicesContainer.innerHTML = '<div class="loading">Failed to connect to Local Node API</div>';
-        }
-    };
+// ==========================================
+// 6. SIMULATION BENCHMARK RUNNER
+// ==========================================
+function initSimulationEngine() {
+    const runBtn = document.getElementById('run-sim-btn');
+    if (!runBtn) return;
 
-    // Fetch MongoDB-formatted message documents + Hop Trace
-    const fetchDbMessages = async () => {
-        try {
-            const res = await fetch('/api/db/messages');
-            const docs = await res.json();
-            
-            if (docs.length === 0) {
-                dbContainer.innerHTML = '<div class="loading">No records in SQLite database collection.</div>';
-            } else {
-                dbContainer.innerHTML = docs.map(doc => {
-                    const dateStr = new Date(doc.timestamp).toLocaleTimeString();
-                    let hopItemsHtml = '';
+    runBtn.addEventListener('click', async () => {
+        const scenario = document.getElementById('sim-scenario-select').value;
+        const nodeCount = parseInt(document.getElementById('sim-node-count').value, 10) || 25;
+        const randomSeed = parseInt(document.getElementById('sim-seed').value, 10) || 849217;
 
-                    try {
-                        const hops = JSON.parse(doc.hopTrace || '[]');
-                        if (hops.length > 0) {
-                            hopItemsHtml = `
-                                <div class="hop-trail">
-                                    <span style="font-weight:600; color:#8B92A0;">Route:</span>
-                                    ${hops.map((h, i) => `<span class="hop-item">${i + 1}. ${escapeHtml(h.nodeName || h.nodeId)} (${escapeHtml(h.transport || 'P2P')})</span>`).join(' ➔ ')}
-                                </div>
-                            `;
-                        }
-                    } catch (e) {}
-
-                    return `
-                        <div class="doc-card">
-                            <div class="doc-field"><span class="key">_id:</span> <span class="val-id">"${escapeHtml(doc._id)}"</span></div>
-                            <div class="doc-field"><span class="key">conversation:</span> <span class="val-str">"${escapeHtml(doc.conversationId)}"</span></div>
-                            <div class="doc-field"><span class="key">senderId:</span> <span class="val-str">"${escapeHtml(doc.senderId)}"</span></div>
-                            <div class="doc-field"><span class="key">decryptedText:</span> <span class="val-str" style="font-weight:600; color:#FFFFFF;">"${escapeHtml(doc.decryptedText)}"</span></div>
-                            <div class="doc-field"><span class="key">encryptedPayload:</span> <span class="val-str" style="opacity:0.4;">"${escapeHtml(doc.encryptedPayload.slice(0, 35))}..."</span></div>
-                            <div class="doc-field"><span class="key">timestamp:</span> <span class="val-num">${doc.timestamp}</span> <span style="color:#5A6070;">// ${dateStr}</span></div>
-                            <div class="doc-field"><span class="key">status:</span> <span class="val-str">"${escapeHtml(doc.status)}"</span></div>
-                            ${hopItemsHtml}
-                        </div>
-                    `;
-                }).join('');
-            }
-        } catch (e) {
-            console.error('Failed to query DB messages', e);
-            dbContainer.innerHTML = '<div class="loading">Error reading database collection.</div>';
-        }
-    };
-
-    // Send Message from Web
-    const sendMessage = async () => {
-        const text = msgInput.value.trim();
-        const conv = targetConvInput.value.trim() || 'General Chat';
-        if (!text) return;
-
-        sendBtn.disabled = true;
-        sendStatus.textContent = 'Encrypting & broadcasting...';
-        sendStatus.style.color = '#8B92A0';
+        runBtn.disabled = true;
+        runBtn.textContent = 'EXECUTING BENCHMARK...';
 
         try {
-            const res = await fetch('/api/db/messages/send', {
+            const res = await fetch('/api/v1/admin/simulations/run', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ conversationId: conv, text: text })
+                body: JSON.stringify({ scenario, nodeCount, randomSeed })
             });
-            const data = await res.json();
-            if (data.success) {
-                sendStatus.textContent = '✓ Message delivered to mesh';
-                sendStatus.style.color = '#10B981';
-                msgInput.value = '';
-                fetchStats();
-                fetchDbMessages();
-            } else {
-                sendStatus.textContent = 'Failed: ' + (data.message || 'Unknown error');
-                sendStatus.style.color = '#F87171';
+
+            if (res.ok) {
+                const report = await res.json();
+                const resBox = document.getElementById('sim-result-box');
+                resBox.classList.remove('hidden');
+
+                document.getElementById('sim-res-scenario').textContent = `${report.scenarioName} (Seed: ${report.randomSeed})`;
+                document.getElementById('sim-res-delivery').textContent = `${report.deliveryRatePercent.toFixed(1)}%`;
+                document.getElementById('sim-res-packets').textContent = `${report.totalPacketsDelivered} / ${report.totalPacketsSent}`;
+                document.getElementById('sim-res-latency').textContent = `${report.averageLatencyMs.toFixed(1)}ms`;
+                document.getElementById('sim-res-hops').textContent = `${report.averageHops.toFixed(1)}`;
+                fetchAudit();
             }
         } catch (e) {
-            sendStatus.textContent = 'Connection Error';
-            sendStatus.style.color = '#F87171';
+            alert('Simulation execution failed: ' + e.message);
+        } finally {
+            runBtn.disabled = false;
+            runBtn.textContent = 'EXECUTE BENCHMARK';
         }
-
-        sendBtn.disabled = false;
-        setTimeout(() => { sendStatus.textContent = ''; }, 3000);
-    };
-
-    // Clear DB
-    const clearDb = async () => {
-        if (!confirm('Clear all encrypted messages?')) return;
-        try {
-            await fetch('/api/db/clear', { method: 'POST' });
-            fetchStats();
-            fetchDbMessages();
-        } catch (e) {
-            console.error('Failed to clear database', e);
-        }
-    };
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
-
-    sendBtn.addEventListener('click', sendMessage);
-    msgInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendMessage();
     });
+}
 
-    refreshBtn.addEventListener('click', () => {
-        fetchStats();
-        fetchDevices();
+// ==========================================
+// 7. EMERGENCY CONTROLS
+// ==========================================
+function initEmergencyControls() {
+    const dangerBtns = document.querySelectorAll('[data-emergency]');
+    dangerBtns.forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const action = btn.getAttribute('data-emergency');
+            if (confirm(`CRITICAL WARNING: Are you sure you want to execute emergency action: ${action.toUpperCase()}?`)) {
+                try {
+                    const res = await fetch('/api/v1/admin/emergency', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action, reason: 'Operator emergency trigger' })
+                    });
+                    if (res.ok) {
+                        alert(`Emergency action ${action} executed.`);
+                        fetchAudit();
+                    }
+                } catch (e) {
+                    alert('Emergency action failed: ' + e.message);
+                }
+            }
+        });
     });
+}
 
-    refreshDbBtn.addEventListener('click', () => {
-        fetchStats();
-        fetchDbMessages();
+// ==========================================
+// 8. SEARCH FILTERS & UTILS
+// ==========================================
+function initSearchFilters() {
+    const search = document.getElementById('node-search');
+    if (!search) return;
+    search.addEventListener('input', () => {
+        const q = search.value.toLowerCase();
+        const rows = document.querySelectorAll('#nodes-table-body tr');
+        rows.forEach(r => {
+            r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
     });
+}
 
-    clearDbBtn.addEventListener('click', clearDb);
-
-    // Initial load
-    fetchStats();
-    fetchDevices();
-    fetchDbMessages();
-
-    // Auto-refresh every 3.5 seconds
-    setInterval(() => {
-        fetchStats();
-        fetchDevices();
-        fetchDbMessages();
-    }, 3500);
-});
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
