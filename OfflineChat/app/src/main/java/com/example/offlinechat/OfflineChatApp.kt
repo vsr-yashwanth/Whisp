@@ -3,6 +3,7 @@ package com.example.offlinechat
 import android.app.Application
 import android.util.Base64
 import android.util.Log
+import com.example.offlinechat.crdt.CrdtEngine
 import com.example.offlinechat.data.ChatDatabase
 import com.example.offlinechat.data.Conversation
 import com.example.offlinechat.data.Message
@@ -10,9 +11,13 @@ import com.example.offlinechat.network.DeduplicationCache
 import com.example.offlinechat.network.HybridMeshTransport
 import com.example.offlinechat.network.MeshPacket
 import com.example.offlinechat.network.PacketType
+import com.example.offlinechat.network.PartitionManager
 import com.example.offlinechat.network.StoreAndForwardManager
 import com.example.offlinechat.network.WebServerManager
+import com.example.offlinechat.network.dtn.DtnBundle
+import com.example.offlinechat.network.dtn.DtnEngine
 import com.example.offlinechat.routing.BatteryRelayPolicy
+import com.example.offlinechat.routing.MobilityClassifier
 import com.example.offlinechat.security.CryptoManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +42,14 @@ class OfflineChatApp : Application() {
         private set
     lateinit var batteryRelayPolicy: BatteryRelayPolicy
         private set
+    lateinit var dtnEngine: DtnEngine
+        private set
+    lateinit var partitionManager: PartitionManager
+        private set
+    lateinit var crdtEngine: CrdtEngine
+        private set
+    lateinit var mobilityClassifier: MobilityClassifier
+        private set
 
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -51,17 +64,40 @@ class OfflineChatApp : Application() {
         transport = HybridMeshTransport(this)
         webServerManager = WebServerManager(this, database.chatDao(), transport, cryptoManager)
 
+        dtnEngine = DtnEngine(
+            chatDao = database.chatDao(),
+            sendRawData = { data -> transport.sendData(data) }
+        )
+        dtnEngine.start()
+
+        partitionManager = PartitionManager(
+            localNodeId = transport.localId,
+            chatDao = database.chatDao(),
+            sendRawPacket = { data -> transport.sendData(data) }
+        )
+
+        crdtEngine = CrdtEngine(
+            localActorId = transport.localId,
+            chatDao = database.chatDao(),
+            sendRawPacket = { data -> transport.sendData(data) }
+        )
+
+        mobilityClassifier = MobilityClassifier(this)
+        mobilityClassifier.start()
+
         storeAndForwardManager = StoreAndForwardManager(
             chatDao = database.chatDao(),
             sendFunction = { data -> transport.sendData(data) }
         )
         storeAndForwardManager.start()
 
-        // Listen for discovered peers and flush store-and-forward queue
+        // Listen for discovered peers: trigger partition manager & opportunistic DTN flushes
         appScope.launch {
             transport.discoveredPeers.collect { peers ->
+                partitionManager.onPeerTopologyUpdated(peers)
                 peers.forEach { peer ->
                     storeAndForwardManager.onPeerConnectedOrDiscovered(peer.endpointId)
+                    dtnEngine.onPeerConnectedOrDiscovered(peer.endpointId)
                 }
             }
         }
@@ -99,7 +135,15 @@ class OfflineChatApp : Application() {
                     return@launch
                 }
 
-                // 4. Stamp local node hop & battery state onto the packet
+                // 4. Record delivery result in PredictionEngine & EncounterTracker
+                transport.routingEngine.predictionEngine.recordPacketDeliveryResult(
+                    peerId = packet.senderId,
+                    latencyMs = packet.hops.lastOrNull()?.latencyMs ?: 20L,
+                    success = true
+                )
+                transport.routingEngine.encounterTracker.recordEncounter(packet.senderId, transportType)
+
+                // 5. Stamp local node hop & battery state onto the packet
                 val stampedPacket = packet.stampedWithHop(
                     nodeId = transport.localId,
                     nodeName = transport.localName,
@@ -108,20 +152,48 @@ class OfflineChatApp : Application() {
                     charging = batteryRelayPolicy.isCharging()
                 )
 
-                // 5. Store-and-Forward / Battery-Aware Multi-hop Relay check
+                // 6. Partition Epoch & CRDT Specialized Handlers
+                when (stampedPacket.packetType) {
+                    PacketType.PARTITION_EPOCH_SYNC -> {
+                        partitionManager.handleIncomingEpochSync(stampedPacket.payload)
+                        return@launch
+                    }
+                    PacketType.CRDT_OPERATION -> {
+                        crdtEngine.applyRemoteOperation(stampedPacket.payload)
+                        return@launch
+                    }
+                    else -> {}
+                }
+
+                // 7. Store-and-Forward / DTN Multi-hop Relay check
                 val isForMe = stampedPacket.recipientId == "ALL" || stampedPacket.recipientId == transport.localId
                 if (!isForMe) {
                     if (batteryRelayPolicy.shouldRelay(stampedPacket)) {
+                        // Store in DTN Custody
+                        val dtnBundle = DtnBundle(
+                            bundleId = stampedPacket.packetId,
+                            messageId = stampedPacket.messageId,
+                            source = stampedPacket.senderId,
+                            destination = stampedPacket.recipientId,
+                            creationTime = stampedPacket.timestamp,
+                            expirationTime = stampedPacket.timestamp + (stampedPacket.ttl * 60_000L),
+                            ttl = stampedPacket.ttl,
+                            priority = stampedPacket.priority,
+                            payload = stampedPacket.payload,
+                            payloadHash = stampedPacket.payloadHash
+                        )
+                        dtnEngine.ingestAndStoreBundle(dtnBundle)
                         storeAndForwardManager.bufferPacket(stampedPacket)
-                        Log.d("OfflineChatApp", "Relaying packet (${stampedPacket.packetId}) for (${stampedPacket.recipientId})")
+                        Log.d("OfflineChatApp", "Stored DTN custody bundle (${stampedPacket.packetId}) for (${stampedPacket.recipientId})")
                     } else {
-                        Log.w("OfflineChatApp", "Dropped relay packet (${stampedPacket.packetId}) due to low battery threshold (${batteryRelayPolicy.getBatteryLevel()}%)")
+                        Log.w("OfflineChatApp", "Dropped relay packet (${stampedPacket.packetId}) due to low battery threshold")
                     }
                     return@launch
                 }
 
+                // 8. Process Direct Packet Payload
                 when (stampedPacket.packetType) {
-                    PacketType.MESSAGE, PacketType.SOS -> {
+                    PacketType.MESSAGE, PacketType.SOS, PacketType.BUNDLE_DATA -> {
                         // Decrypt transit ciphertext
                         val transitBytes = Base64.decode(stampedPacket.payload, Base64.NO_WRAP)
                         val decryptedPlaintext = cryptoManager.decryptFromTransit(transitBytes)
@@ -164,9 +236,7 @@ class OfflineChatApp : Application() {
                         database.chatDao().insertMessage(dbMsg)
                         Log.d("OfflineChatApp", "PERSISTED PACKET (${stampedPacket.messageId}) in (${stampedPacket.conversationId}): $decryptedPlaintext")
                     }
-                    else -> {
-                        // Handled by specialized handlers
-                    }
+                    else -> {}
                 }
             } catch (e: Exception) {
                 Log.e("OfflineChatApp", "Failed to process incoming raw packet: ${e.message}", e)

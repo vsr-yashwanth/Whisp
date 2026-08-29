@@ -4,14 +4,19 @@ import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 
 class RoutingEngine(
-    private val config: RoutingConfig = RoutingConfig()
+    private val config: RoutingConfig = RoutingConfig(),
+    val predictionEngine: PredictionEngine = EWMAPredictionEngine(),
+    val encounterTracker: EncounterTracker = EncounterTracker()
 ) {
     // DestinationNodeId -> List of Candidate Routes
     private val routingTable = ConcurrentHashMap<String, MutableList<RouteCandidate>>()
 
     /**
-     * Calculates a penalty score for a route candidate.
+     * Calculates a multi-factor penalty score for a route candidate.
      * LOWER SCORE = BETTER ROUTE.
+     *
+     * In V3, the score blends instantaneous network telemetry with
+     * predictive link stability and encounter probability.
      */
     fun calculateRouteScore(candidate: RouteCandidate): Float {
         val m = candidate.metrics
@@ -35,18 +40,28 @@ class RoutingEngine(
             }
         }
 
-        // 5. Instability & Delivery Failure Penalty
-        val failureRate = (1.0f - m.recentDeliverySuccessRate).coerceIn(0.0f, 1.0f)
-        score += failureRate * config.wInstability
+        // 5. Predictive Stability Factor (Higher stability = lower penalty score)
+        val predictedStability = predictionEngine.calculatePredictedStability(candidate.nextHopNodeId)
+        val instabilityPenalty = (1.0f - predictedStability) * 60.0f
+        score += instabilityPenalty
 
-        // 6. Transport Type preference (Fast local Wi-Fi vs BLE)
+        // 6. Destination Encounter Probability (Frequent encounters with destination reduce penalty)
+        val encounterProb = encounterTracker.getEncounterProbability(candidate.destinationNodeId)
+        val encounterBonus = encounterProb * 20.0f
+        score -= encounterBonus
+
+        // 7. Transport Type preference (Fast local Wi-Fi vs BLE)
         when (candidate.viaTransport) {
-            "LOCAL_BRIDGE", "WIFI_DIRECT" -> score -= 5.0f // Bonus for high-bandwidth local Wi-Fi
+            "LOCAL_BRIDGE", "WIFI_DIRECT" -> score -= 10.0f // Bonus for high-bandwidth local Wi-Fi
             "BLE_MESH" -> score += 5.0f
             "GLOBAL_RELAY" -> score += 8.0f // WAN cloud fallback
         }
 
         return score
+    }
+
+    fun explainRoute(candidate: RouteCandidate): String {
+        return predictionEngine.explainRouteDecision(candidate)
     }
 
     /**
@@ -58,6 +73,7 @@ class RoutingEngine(
             candidates.removeAll { it.nextHopNodeId == candidate.nextHopNodeId && it.viaTransport == candidate.viaTransport }
             candidates.add(candidate)
         }
+        encounterTracker.recordEncounter(candidate.nextHopNodeId, candidate.viaTransport)
     }
 
     /**
@@ -84,6 +100,7 @@ class RoutingEngine(
         synchronized(candidates) {
             val removed = candidates.removeAll { it.nextHopNodeId == nextHopNodeId }
             if (removed) {
+                predictionEngine.recordPeerConnectionEvent(nextHopNodeId, 0L, disconnected = true)
                 Log.d("RoutingEngine", "Invalidated route to ($destinationNodeId) via ($nextHopNodeId)")
             }
         }
@@ -93,11 +110,12 @@ class RoutingEngine(
      * Invalidate all routes using a specific next-hop node (e.g. when peer disconnects)
      */
     fun invalidateAllRoutesViaNextHop(nextHopNodeId: String) {
-        routingTable.forEach { (dest, candidates) ->
+        routingTable.forEach { (_, candidates) ->
             synchronized(candidates) {
                 candidates.removeAll { it.nextHopNodeId == nextHopNodeId }
             }
         }
+        predictionEngine.recordPeerConnectionEvent(nextHopNodeId, 0L, disconnected = true)
     }
 
     fun getAllActiveRoutes(): Map<String, List<RouteCandidate>> {

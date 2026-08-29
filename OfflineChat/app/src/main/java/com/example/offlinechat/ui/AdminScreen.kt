@@ -53,12 +53,18 @@ fun AdminScreen(
     var recentMessages by remember { mutableStateOf<List<Message>>(emptyList()) }
     var totalMessageCount by remember { mutableStateOf(0) }
     val bufferedCount by chatDao.getBufferedPacketCount().collectAsState(initial = 0)
+    val dtnStorageBytes by chatDao.getTotalDtnStorageBytes().collectAsState(initial = 0L)
+    val dtnBundleCount by chatDao.getDtnBundleCount().collectAsState(initial = 0)
+
+    val partitionStatus by app.partitionManager.partitionStatus.collectAsState()
+    val movementState by app.mobilityClassifier.currentMovementState.collectAsState()
 
     val activeRoutes = remember(discoveredPeers) {
         transport.routingEngine.getAllActiveRoutes()
     }
 
     var selectedPeer by remember { mutableStateOf<Peer?>(null) }
+    var inspectingCandidate by remember { mutableStateOf<RouteCandidate?>(null) }
 
     LaunchedEffect(Unit) {
         chatDao.getAllMessages().collect { msgs ->
@@ -71,14 +77,22 @@ fun AdminScreen(
         PeerDetailsDialog(peer = selectedPeer!!, onDismiss = { selectedPeer = null })
     }
 
+    if (inspectingCandidate != null) {
+        RouteExplanationDialog(
+            candidate = inspectingCandidate!!,
+            explanation = transport.routingEngine.explainRoute(inspectingCandidate!!),
+            onDismiss = { inspectingCandidate = null }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("NETWORK GRID", fontWeight = FontWeight.Bold, letterSpacing = 1.sp, style = MaterialTheme.typography.titleMedium, color = PureWhite)
+                        Text("NETWORK GRID V3", fontWeight = FontWeight.Bold, letterSpacing = 1.sp, style = MaterialTheme.typography.titleMedium, color = PureWhite)
                         Text(
-                            text = if (isGlobalActive) "GLOBAL GATEWAY ACTIVE" else "LOCAL P2P MESH",
+                            text = if (isGlobalActive) "GLOBAL GATEWAY ACTIVE" else "DTN ADAPTIVE MESH",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isGlobalActive) SignalEmerald else TextSecondary,
@@ -126,20 +140,68 @@ fun AdminScreen(
                     )
                     MetricChip(
                         icon = Icons.Rounded.Refresh,
-                        title = "Store & Fwd",
-                        value = "$bufferedCount",
+                        title = "DTN Bundles",
+                        value = "$dtnBundleCount",
                         modifier = Modifier.weight(1f)
                     )
                     MetricChip(
-                        icon = Icons.Rounded.List,
-                        title = "Messages",
-                        value = "$totalMessageCount",
+                        icon = Icons.Rounded.Place,
+                        title = "Mobility",
+                        value = movementState.name.take(6),
                         modifier = Modifier.weight(1f)
                     )
                 }
 
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // V3 Partition & DTN Quota Card
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(SurfaceDark)
+                        .border(1.dp, SurfaceBorder, RoundedCornerShape(16.dp))
+                        .padding(14.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("NETWORK PARTITION STATUS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextSecondary)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (partitionStatus.isPartitioned) ErrorMuted.copy(alpha = 0.2f) else SignalEmerald.copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (partitionStatus.isPartitioned) "PARTITION SPLIT" else "EPOCH ${partitionStatus.currentEpoch}",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (partitionStatus.isPartitioned) ErrorMuted else SignalEmerald
+                                )
+                            }
+                        }
+
+                        Divider(color = SurfaceBorderSubtle)
+
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text("DTN Custody Storage", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            val kbUsed = dtnStorageBytes / 1024
+                            Text("$kbUsed KB / 500 MB", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = PureWhite)
+                        }
+
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text("Reconciliation State", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            Text(partitionStatus.reconciliationStatus, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = SignalEmerald)
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(24.dp))
-                Text("INTELLIGENT ACTIVE ROUTES", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextSecondary, letterSpacing = 1.sp)
+                Text("PREDICTIVE ACTIVE ROUTES", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextSecondary, letterSpacing = 1.sp)
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
@@ -153,15 +215,21 @@ fun AdminScreen(
                             .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(12.dp))
                             .padding(14.dp)
                     ) {
-                        Text("No multi-hop routes established yet.", fontSize = 12.sp, color = TextSecondary)
+                        Text("No active multi-hop routes established yet.", fontSize = 12.sp, color = TextSecondary)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             } else {
-                items(activeRoutes.entries.toList()) { (destId, candidates) ->
+                items(activeRoutes.entries.toList()) { (_, candidates) ->
                     val bestRoute = candidates.minByOrNull { transport.routingEngine.calculateRouteScore(it) }
                     bestRoute?.let { candidate ->
-                        RouteCandidateCard(candidate = candidate, score = transport.routingEngine.calculateRouteScore(candidate))
+                        val stability = transport.routingEngine.predictionEngine.calculatePredictedStability(candidate.nextHopNodeId)
+                        RouteCandidateCard(
+                            candidate = candidate,
+                            score = transport.routingEngine.calculateRouteScore(candidate),
+                            stabilityPct = (stability * 100).toInt(),
+                            onClick = { inspectingCandidate = candidate }
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
@@ -223,13 +291,19 @@ fun AdminScreen(
 }
 
 @Composable
-fun RouteCandidateCard(candidate: RouteCandidate, score: Float) {
+fun RouteCandidateCard(
+    candidate: RouteCandidate,
+    score: Float,
+    stabilityPct: Int,
+    onClick: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(SurfaceDark)
             .border(1.dp, SurfaceBorder, RoundedCornerShape(12.dp))
+            .clickable { onClick() }
             .padding(12.dp)
     ) {
         Row(
@@ -252,19 +326,39 @@ fun RouteCandidateCard(candidate: RouteCandidate, score: Float) {
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "Score: ${"%.1f".format(score)}",
+                    text = "Stability: $stabilityPct%",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = SignalEmerald
+                    color = if (stabilityPct >= 80) SignalEmerald else TitaniumLight
                 )
                 Text(
-                    text = "${candidate.metrics.hopCount} hop(s) • ${candidate.metrics.averageLatencyMs}ms",
+                    text = "Score: ${"%.1f".format(score)} • ${candidate.metrics.averageLatencyMs}ms",
                     fontSize = 10.sp,
                     color = TextMuted
                 )
             }
         }
     }
+}
+
+@Composable
+fun RouteExplanationDialog(candidate: RouteCandidate, explanation: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceDark,
+        shape = RoundedCornerShape(16.dp),
+        title = {
+            Text("Route Decision Explainability", fontWeight = FontWeight.Bold, color = PureWhite, fontSize = 15.sp)
+        },
+        text = {
+            Text(explanation, fontSize = 12.sp, color = TextSecondary, lineHeight = 18.sp)
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = PureWhite)
+            }
+        }
+    )
 }
 
 @Composable
@@ -297,7 +391,7 @@ fun NetworkRadarCard(
             val center = Offset(size.width / 2f, size.height / 2f)
             val maxRadius = minOf(size.width, size.height) / 2f - 10.dp.toPx()
 
-            // Concentric Titanium Distance Rings
+            // Concentric Distance Rings
             val ringCount = 3
             for (i in 1..ringCount) {
                 val r = (maxRadius / ringCount) * i
@@ -397,7 +491,7 @@ fun NetworkRadarCard(
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = if (isGlobal) "CLOUDFALL ACTIVE" else "AIRGAP MODE",
+                        text = if (isGlobal) "CLOUDFALL ACTIVE" else "DTN AIRGAP MESH",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isGlobal) SignalEmerald else TextMuted

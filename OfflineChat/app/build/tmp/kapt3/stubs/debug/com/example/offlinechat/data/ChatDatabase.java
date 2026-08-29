@@ -1,7 +1,7 @@
 package com.example.offlinechat.data;
 
 @kotlin.Metadata(mv = {1, 9, 0}, k = 1, xi = 48, d1 = {"\u0000\u0014\n\u0002\u0018\u0002\n\u0002\u0018\u0002\n\u0002\b\u0002\n\u0002\u0018\u0002\n\u0002\b\u0002\b\'\u0018\u0000 \u00052\u00020\u0001:\u0001\u0005B\u0005\u00a2\u0006\u0002\u0010\u0002J\b\u0010\u0003\u001a\u00020\u0004H&\u00a8\u0006\u0006"}, d2 = {"Lcom/example/offlinechat/data/ChatDatabase;", "Landroidx/room/RoomDatabase;", "()V", "chatDao", "Lcom/example/offlinechat/data/ChatDao;", "Companion", "app_debug"})
-@androidx.room.Database(entities = {com.example.offlinechat.data.Conversation.class, com.example.offlinechat.data.Message.class, com.example.offlinechat.data.BufferedPacket.class}, version = 3, exportSchema = false)
+@androidx.room.Database(entities = {com.example.offlinechat.data.Conversation.class, com.example.offlinechat.data.Message.class, com.example.offlinechat.data.BufferedPacket.class, com.example.offlinechat.data.DtnBundleEntity.class, com.example.offlinechat.data.PeerEncounterEntity.class, com.example.offlinechat.data.CrdtOperationEntity.class, com.example.offlinechat.data.NetworkEpochEntity.class}, version = 4, exportSchema = false)
 public abstract class ChatDatabase extends androidx.room.RoomDatabase {
     @kotlin.jvm.Volatile
     @org.jetbrains.annotations.Nullable

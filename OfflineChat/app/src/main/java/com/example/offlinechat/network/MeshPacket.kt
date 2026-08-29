@@ -1,5 +1,6 @@
 package com.example.offlinechat.network
 
+import com.example.offlinechat.network.dtn.DtnBundle
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -15,7 +16,13 @@ enum class PacketType {
     SOS,
     FILE_CHUNK,
     LOCATION_SHARE,
-    GROUP_UPDATE
+    GROUP_UPDATE,
+    BUNDLE_DATA,
+    BUNDLE_INVENTORY_QUERY,
+    BUNDLE_INVENTORY_RESPONSE,
+    PARTITION_EPOCH_SYNC,
+    CRDT_OPERATION,
+    CHAOS_BEACON
 }
 
 object PacketPriority {
@@ -26,7 +33,7 @@ object PacketPriority {
 }
 
 data class MeshPacket(
-    val protocolVersion: Int = 2,
+    val protocolVersion: Int = 3,
     val packetType: PacketType = PacketType.MESSAGE,
     val packetId: String = UUID.randomUUID().toString(),
     val messageId: String = packetId,
@@ -63,24 +70,23 @@ data class MeshPacket(
             put("batteryLevel", batteryLevel)
             put("isCharging", isCharging)
 
-            val hopsArr = JSONArray()
+            // Serialize hops
+            val hopsArray = JSONArray()
             hops.forEach { hop ->
-                val hObj = JSONObject().apply {
+                hopsArray.put(JSONObject().apply {
                     put("nodeId", hop.nodeId)
                     put("nodeName", hop.nodeName)
                     put("transport", hop.transport)
                     put("timestamp", hop.timestamp)
                     put("latencyMs", hop.latencyMs)
-                }
-                hopsArr.put(hObj)
+                })
             }
-            put("hops", hopsArr)
+            put("hops", hopsArray)
 
-            if (extraMetadata.isNotEmpty()) {
-                val metaObj = JSONObject()
-                extraMetadata.forEach { (k, v) -> metaObj.put(k, v) }
-                put("extraMetadata", metaObj)
-            }
+            // Extra metadata
+            val metaObj = JSONObject()
+            extraMetadata.forEach { (k, v) -> metaObj.put(k, v) }
+            put("metadata", metaObj)
         }
         return json.toString()
     }
@@ -92,9 +98,9 @@ data class MeshPacket(
         currentBattery: Int = -1,
         charging: Boolean = false
     ): MeshPacket {
+        val lastTimestamp = hops.lastOrNull()?.timestamp ?: timestamp
         val now = System.currentTimeMillis()
-        val prevTimestamp = hops.lastOrNull()?.timestamp ?: timestamp
-        val latency = (now - prevTimestamp).coerceAtLeast(0L)
+        val latency = (now - lastTimestamp).coerceAtLeast(0L)
 
         val newHop = HopRecord(
             nodeId = nodeId,
@@ -105,97 +111,85 @@ data class MeshPacket(
         )
 
         return this.copy(
-            ttl = (this.ttl - 1).coerceAtLeast(0),
-            hopCount = this.hopCount + 1,
-            hops = this.hops + newHop,
+            ttl = (ttl - 1).coerceAtLeast(0),
+            hopCount = hopCount + 1,
+            hops = hops + newHop,
             batteryLevel = if (currentBattery >= 0) currentBattery else this.batteryLevel,
-            isCharging = charging || this.isCharging
+            isCharging = if (currentBattery >= 0) charging else this.isCharging
         )
     }
 
     companion object {
-        fun computeHash(content: String): String {
+        fun computeHash(data: String): String {
             return try {
                 val digest = MessageDigest.getInstance("SHA-256")
-                val bytes = digest.digest(content.toByteArray(Charsets.UTF_8))
-                bytes.joinToString("") { "%02x".format(it) }
+                val hashBytes = digest.digest(data.toByteArray(Charsets.UTF_8))
+                hashBytes.joinToString("") { "%02x".format(it) }
             } catch (e: Exception) {
-                content.hashCode().toString()
+                ""
             }
         }
 
         fun fromJsonString(jsonStr: String): MeshPacket? {
             return try {
-                val json = JSONObject(jsonStr)
+                val obj = JSONObject(jsonStr)
 
-                // Backward-compatible type resolution
-                val typeStr = json.optString("type", "MESSAGE")
+                // Backward-compatibility fallback for legacy V1 packets
+                val typeStr = obj.optString("type", "MESSAGE")
                 val packetType = try {
                     PacketType.valueOf(typeStr)
                 } catch (e: Exception) {
                     PacketType.MESSAGE
                 }
 
-                val version = json.optInt("version", 1)
-                val msgId = json.optString("messageId", UUID.randomUUID().toString())
-                val packetId = json.optString("packetId", msgId)
-                val convId = json.optString("conversationId", "General Chat")
-                val sender = json.optString("senderId", "UnknownNode")
-                val recipient = json.optString("recipientId", "ALL")
-                val ts = json.optLong("timestamp", System.currentTimeMillis())
-                val ttl = json.optInt("ttl", 10)
-                val hopsCount = json.optInt("hopCount", 0)
-                val prio = json.optInt("priority", PacketPriority.NORMAL)
-                val payloadStr = json.optString("payload", "")
-                val hash = json.optString("payloadHash", computeHash(payloadStr))
-                val battery = json.optInt("batteryLevel", -1)
-                val charging = json.optBoolean("isCharging", false)
-
                 val hopsList = mutableListOf<HopRecord>()
-                val hopsArr = json.optJSONArray("hops")
-                if (hopsArr != null) {
-                    for (i in 0 until hopsArr.length()) {
-                        val hObj = hopsArr.optJSONObject(i) ?: continue
+                val hopsArray = obj.optJSONArray("hops")
+                if (hopsArray != null) {
+                    for (i in 0 until hopsArray.length()) {
+                        val hObj = hopsArray.getJSONObject(i)
                         hopsList.add(
                             HopRecord(
-                                nodeId = hObj.optString("nodeId"),
-                                nodeName = hObj.optString("nodeName"),
-                                transport = hObj.optString("transport", "ORIGIN"),
-                                timestamp = hObj.optLong("timestamp", ts),
+                                nodeId = hObj.optString("nodeId", ""),
+                                nodeName = hObj.optString("nodeName", ""),
+                                transport = hObj.optString("transport", "BLE"),
+                                timestamp = hObj.optLong("timestamp", System.currentTimeMillis()),
                                 latencyMs = hObj.optLong("latencyMs", 0L)
                             )
                         )
                     }
                 }
 
-                val metaMap = mutableMapOf<String, String>()
-                val metaObj = json.optJSONObject("extraMetadata")
+                val metadataMap = mutableMapOf<String, String>()
+                val metaObj = obj.optJSONObject("metadata")
                 if (metaObj != null) {
                     val keys = metaObj.keys()
                     while (keys.hasNext()) {
-                        val k = keys.next()
-                        metaMap[k] = metaObj.optString(k)
+                        val key = keys.next()
+                        metadataMap[key] = metaObj.optString(key, "")
                     }
                 }
 
+                val rawPayload = obj.optString("payload", "")
+                val payloadHash = obj.optString("payloadHash", computeHash(rawPayload))
+
                 MeshPacket(
-                    protocolVersion = version,
+                    protocolVersion = obj.optInt("version", 3),
                     packetType = packetType,
-                    packetId = packetId,
-                    messageId = msgId,
-                    conversationId = convId,
-                    senderId = sender,
-                    recipientId = recipient,
-                    timestamp = ts,
-                    ttl = ttl,
-                    hopCount = hopsCount,
-                    priority = prio,
-                    payload = payloadStr,
-                    payloadHash = hash,
+                    packetId = obj.optString("packetId", obj.optString("id", UUID.randomUUID().toString())),
+                    messageId = obj.optString("messageId", obj.optString("id", UUID.randomUUID().toString())),
+                    conversationId = obj.optString("conversationId", "General Chat"),
+                    senderId = obj.optString("senderId", obj.optString("sender", "UnknownNode")),
+                    recipientId = obj.optString("recipientId", "ALL"),
+                    timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                    ttl = obj.optInt("ttl", 10),
+                    hopCount = obj.optInt("hopCount", hopsList.size),
+                    priority = obj.optInt("priority", PacketPriority.NORMAL),
+                    payload = rawPayload,
+                    payloadHash = payloadHash,
                     hops = hopsList,
-                    batteryLevel = battery,
-                    isCharging = charging,
-                    extraMetadata = metaMap
+                    batteryLevel = obj.optInt("batteryLevel", -1),
+                    isCharging = obj.optBoolean("isCharging", false),
+                    extraMetadata = metadataMap
                 )
             } catch (e: Exception) {
                 null

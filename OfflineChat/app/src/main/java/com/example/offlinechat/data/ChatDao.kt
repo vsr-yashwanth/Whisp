@@ -56,4 +56,62 @@ interface ChatDao {
 
     @Query("SELECT COUNT(*) FROM buffered_packets")
     fun getBufferedPacketCount(): Flow<Int>
+
+    // DTN Bundle Operations
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDtnBundle(bundle: DtnBundleEntity)
+
+    @Query("SELECT * FROM dtn_bundles WHERE destination = :destination OR destination = 'ALL' ORDER BY priority DESC, creationTime ASC")
+    suspend fun getDtnBundlesForDestination(destination: String): List<DtnBundleEntity>
+
+    @Query("SELECT * FROM dtn_bundles WHERE custodyState = :state ORDER BY priority DESC, creationTime ASC")
+    suspend fun getDtnBundlesByState(state: String): List<DtnBundleEntity>
+
+    @Query("SELECT * FROM dtn_bundles WHERE expirationTime > :now ORDER BY priority DESC, creationTime ASC")
+    suspend fun getActiveDtnBundles(now: Long): List<DtnBundleEntity>
+
+    @Query("UPDATE dtn_bundles SET custodyState = :state WHERE bundleId = :bundleId")
+    suspend fun updateDtnBundleCustodyState(bundleId: String, state: String)
+
+    @Query("DELETE FROM dtn_bundles WHERE bundleId = :bundleId")
+    suspend fun deleteDtnBundle(bundleId: String)
+
+    @Query("DELETE FROM dtn_bundles WHERE expirationTime <= :now")
+    suspend fun deleteExpiredDtnBundles(now: Long): Int
+
+    @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM dtn_bundles")
+    fun getTotalDtnStorageBytes(): Flow<Long>
+
+    @Query("SELECT * FROM dtn_bundles ORDER BY priority ASC, creationTime ASC LIMIT :limit")
+    suspend fun getEvictionCandidates(limit: Int): List<DtnBundleEntity>
+
+    @Query("SELECT COUNT(*) FROM dtn_bundles")
+    fun getDtnBundleCount(): Flow<Int>
+
+    // Peer Encounter History Operations
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdatePeerEncounter(encounter: PeerEncounterEntity)
+
+    @Query("SELECT * FROM peer_encounters WHERE peerId = :peerId LIMIT 1")
+    suspend fun getPeerEncounter(peerId: String): PeerEncounterEntity?
+
+    @Query("SELECT * FROM peer_encounters ORDER BY lastSeen DESC")
+    fun getAllPeerEncounters(): Flow<List<PeerEncounterEntity>>
+
+    // CRDT Operations
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCrdtOperation(op: CrdtOperationEntity)
+
+    @Query("SELECT * FROM crdt_operations WHERE documentId = :documentId ORDER BY lamportClock ASC, timestamp ASC")
+    suspend fun getCrdtOperationsForDocument(documentId: String): List<CrdtOperationEntity>
+
+    @Query("SELECT COALESCE(MAX(lamportClock), 0) FROM crdt_operations WHERE documentId = :documentId")
+    suspend fun getMaxLamportClock(documentId: String): Long
+
+    // Network Epoch Operations
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNetworkEpoch(epoch: NetworkEpochEntity)
+
+    @Query("SELECT * FROM network_epochs ORDER BY epochNumber DESC LIMIT 1")
+    suspend fun getLatestNetworkEpoch(): NetworkEpochEntity?
 }
