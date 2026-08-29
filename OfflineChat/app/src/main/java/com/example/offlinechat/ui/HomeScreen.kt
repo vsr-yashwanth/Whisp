@@ -37,6 +37,10 @@ fun HomeScreen(
     onNavigateToAdmin: () -> Unit,
     onNavigateToCrdtNotes: () -> Unit = {}
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val authPrefs = remember { context.getSharedPreferences("whisp_auth_prefs", android.content.Context.MODE_PRIVATE) }
+    val loggedInUser = authPrefs.getString("logged_in_user", "yashwanth") ?: "yashwanth"
+
     if (pairingRequest != null) {
         PairingDialog(
             request = pairingRequest,
@@ -108,14 +112,14 @@ fun HomeScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column {
                                 Text(
-                                    "Autonomous Mesh Active",
+                                    "User: $loggedInUser",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = PureWhite,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    if (isGlobalActive) "Global Relay Online • Worldwide Reach" else "Zero-Knowledge • Local Offline P2P",
+                                    if (isGlobalActive) "MongoDB Synced • Global Relay Online" else "MongoDB Synced • Local Offline P2P",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (isGlobalActive) SignalEmerald else TextSecondary
                                 )

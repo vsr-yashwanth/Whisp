@@ -1,6 +1,7 @@
 // Whisp Admin Control Plane v4 - JavaScript Engine
 
 document.addEventListener('DOMContentLoaded', () => {
+    initAuth();
     initNavigation();
     initRadarCanvas();
     initTopologyCanvas();
@@ -8,17 +9,108 @@ document.addEventListener('DOMContentLoaded', () => {
     initEmergencyControls();
     initSearchFilters();
 
-    // Initial Telemetry Load
-    fetchAllTelemetry();
+    // Check existing auth session
+    if (sessionStorage.getItem('whisp_admin_token')) {
+        showDashboard();
+    } else {
+        showLogin();
+    }
 
     // Live refresh loop every 3 seconds
-    setInterval(fetchAllTelemetry, 3000);
+    setInterval(() => {
+        if (sessionStorage.getItem('whisp_admin_token')) {
+            fetchAllTelemetry();
+        }
+    }, 3000);
 });
 
 // State
 let globalNodes = [];
 let globalRoutes = [];
 let pendingActionNodeId = null;
+
+// ==========================================
+// 0. AUTHENTICATION & LOGIN
+// ==========================================
+function initAuth() {
+    const form = document.getElementById('admin-login-form');
+    if (!form) return;
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('admin-user-input').value.trim();
+        const password = document.getElementById('admin-pass-input').value.trim();
+        const errorMsg = document.getElementById('login-error-msg');
+        const submitBtn = document.getElementById('login-submit-btn');
+
+        errorMsg.classList.add('hidden');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'AUTHENTICATING...';
+
+        try {
+            // Try Ktor server auth first, fallback to relay auth port 8088
+            let res = await fetch('/api/v1/auth/admin-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (!res.ok) {
+                try {
+                    res = await fetch('http://127.0.0.1:8088/api/auth/admin-login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                } catch (err) {}
+            }
+
+            if (res.ok) {
+                const data = await res.json();
+                sessionStorage.setItem('whisp_admin_token', data.token || 'whisp_auth_ok');
+                sessionStorage.setItem('whisp_admin_user', data.username || username);
+                sessionStorage.setItem('whisp_admin_role', data.role || 'SUPER_ADMIN');
+                showDashboard();
+            } else {
+                errorMsg.textContent = 'Invalid admin credentials or unauthorized account.';
+                errorMsg.classList.remove('hidden');
+            }
+        } catch (err) {
+            errorMsg.textContent = 'Error connecting to authentication service: ' + err.message;
+            errorMsg.classList.remove('hidden');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'AUTHENTICATE & ENTER';
+        }
+    });
+
+    document.getElementById('admin-logout-btn')?.addEventListener('click', () => {
+        sessionStorage.clear();
+        showLogin();
+    });
+}
+
+function showDashboard() {
+    document.getElementById('admin-login-view')?.classList.add('hidden');
+    document.getElementById('admin-dashboard-view')?.classList.remove('hidden');
+    
+    const user = sessionStorage.getItem('whisp_admin_user') || 'admin';
+    const role = sessionStorage.getItem('whisp_admin_role') || 'SUPER_ADMIN';
+    const usernameElem = document.getElementById('current-username');
+    if (usernameElem) usernameElem.textContent = `${user} (${role})`;
+    
+    fetchAllTelemetry();
+}
+
+function showLogin() {
+    document.getElementById('admin-dashboard-view')?.classList.add('hidden');
+    document.getElementById('admin-login-view')?.classList.remove('hidden');
+}
+
+function fillAdminCreds(u, p) {
+    document.getElementById('admin-user-input').value = u;
+    document.getElementById('admin-pass-input').value = p;
+}
 
 // ==========================================
 // 1. TAB NAVIGATION

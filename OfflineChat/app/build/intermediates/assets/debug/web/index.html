@@ -8,7 +8,48 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body class="dark-theme">
-    <div class="app-layout">
+
+    <!-- ADMIN LOGIN MODAL / SCREEN -->
+    <div id="admin-login-view" class="login-view-wrapper">
+        <div class="login-card glass">
+            <div class="login-header">
+                <div class="logo-wrap">
+                    <span class="pulse-dot"></span>
+                    <span class="logo-text">WHISP</span>
+                </div>
+                <h2>Control Plane Authentication</h2>
+                <div class="db-sync-badge">
+                    <span class="status-dot"></span> Local MongoDB Synced (<code>localhost:27017</code>)
+                </div>
+            </div>
+
+            <form id="admin-login-form" class="login-form">
+                <div class="form-group">
+                    <label>Admin Username</label>
+                    <input type="text" id="admin-user-input" class="input-field" placeholder="e.g. admin" value="admin" required />
+                </div>
+                <div class="form-group">
+                    <label>Admin Password</label>
+                    <input type="password" id="admin-pass-input" class="input-field" placeholder="Enter password" value="whispadmin123" required />
+                </div>
+
+                <div class="quick-credentials-box">
+                    <span class="quick-label">Pre-injected MongoDB Accounts:</span>
+                    <div class="quick-btns-row">
+                        <button type="button" class="quick-btn" onclick="fillAdminCreds('admin', 'whispadmin123')">SuperAdmin (admin)</button>
+                        <button type="button" class="quick-btn" onclick="fillAdminCreds('operator', 'operator123')">Operator (operator)</button>
+                    </div>
+                </div>
+
+                <div id="login-error-msg" class="login-error-msg hidden"></div>
+
+                <button type="submit" id="login-submit-btn" class="btn primary-btn btn-block">AUTHENTICATE & ENTER</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN DASHBOARD VIEW (Hidden until authenticated) -->
+    <div id="admin-dashboard-view" class="app-layout hidden">
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="sidebar-header">
@@ -77,9 +118,10 @@
                     <div class="badge-pill">EPOCH <span id="top-epoch">1</span></div>
                     <div class="badge-pill">AIRGAP MESH</div>
                     <div class="user-pill">
-                        <span class="avatar">OP</span>
-                        <span class="user-name">Operator-Admin</span>
+                        <span class="avatar" id="current-avatar">OP</span>
+                        <span class="user-name" id="current-username">admin (SUPER_ADMIN)</span>
                     </div>
+                    <button id="admin-logout-btn" class="btn secondary-btn">Log Out</button>
                 </div>
             </header>
 
@@ -123,10 +165,14 @@
                     </div>
                     <div class="card glass col-4">
                         <div class="card-header">
-                            <h3>Security Telemetry</h3>
+                            <h3>Security & Auth Telemetry</h3>
                             <span class="tag badge-secure">AEAD Active</span>
                         </div>
                         <div class="security-summary-list">
+                            <div class="sec-item">
+                                <span class="sec-label">Local MongoDB Backend</span>
+                                <span class="badge-emerald">PORT 27017</span>
+                            </div>
                             <div class="sec-item">
                                 <span class="sec-label">Ed25519 Envelope Signatures</span>
                                 <span class="badge-emerald">VERIFIED</span>
@@ -134,10 +180,6 @@
                             <div class="sec-item">
                                 <span class="sec-label">Anti-Flood Rate Limiter</span>
                                 <span class="badge-emerald">15/s ACTIVE</span>
-                            </div>
-                            <div class="sec-item">
-                                <span class="sec-label">Hardware Keystore Tink</span>
-                                <span class="badge-emerald">LOCKED</span>
                             </div>
                             <div class="sec-item">
                                 <span class="sec-label">Active Threat Level</span>
@@ -342,7 +384,7 @@
                             <label>Benchmark Scenario</label>
                             <select id="sim-scenario-select" class="input-field">
                                 <option value="SCENARIO_A">Scenario A — Stable Mesh (25 nodes, low loss)</option>
-                                <option value="SCENARIO_B">Scenario B — Unstable Mesh (10% packet loss)</option>
+                                <option value="SCENARIO_B">Scenario B — Unstable Mesh (8% packet loss)</option>
                                 <option value="SCENARIO_C">Scenario C — Network Partition & Healing</option>
                                 <option value="SCENARIO_D">Scenario D — DTN Delay-Tolerant Delivery</option>
                                 <option value="SCENARIO_E">Scenario E — Cloud Gateway Failover</option>

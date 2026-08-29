@@ -28,6 +28,7 @@ import com.example.offlinechat.network.PeerTransport
 import com.example.offlinechat.network.WebServerService
 import com.example.offlinechat.security.CryptoManager
 import com.example.offlinechat.ui.AdminScreen
+import com.example.offlinechat.ui.AuthScreen
 import com.example.offlinechat.ui.ChatScreen
 import com.example.offlinechat.ui.HomeScreen
 import com.example.offlinechat.ui.SettingsScreen
@@ -51,6 +52,9 @@ class MainActivity : ComponentActivity() {
             // Ignore if service startup is restricted
         }
 
+        val authPrefs = getSharedPreferences("whisp_auth_prefs", MODE_PRIVATE)
+        val initialStartDest = if (authPrefs.getBoolean("is_logged_in", false)) "home" else "auth"
+
         setContent {
             OfflineChatTheme {
                 Surface(
@@ -61,12 +65,14 @@ class MainActivity : ComponentActivity() {
                     val discoveredPeers by transport.discoveredPeers.collectAsState()
                     val connectionState by transport.connectionState.collectAsState()
                     val pairingRequest by transport.pairingRequest.collectAsState()
-                    val isGlobalActive by (transport as? HybridMeshTransport)?.isGlobalGatewayActive?.collectAsState() ?: remember { mutableStateOf(false) }
+                    val isGlobalActive = if (transport is HybridMeshTransport) {
+                        (transport as HybridMeshTransport).isGlobalGatewayActive.collectAsState().value
+                    } else false
 
                     // Request Runtime Permissions for Physical BLE & Wi-Fi Direct radios
                     val permissionLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.RequestMultiplePermissions()
-                    ) { permissions ->
+                    ) { _ ->
                         val myName = "User-${android.os.Build.MODEL.take(6)}"
                         transport.startAdvertising(myName)
                         transport.startDiscovery(myName)
@@ -91,7 +97,16 @@ class MainActivity : ComponentActivity() {
                         permissionLauncher.launch(permissionsToRequest.toTypedArray())
                     }
 
-                    NavHost(navController = navController, startDestination = "home") {
+                    NavHost(navController = navController, startDestination = initialStartDest) {
+                        composable("auth") {
+                            AuthScreen(
+                                onLoginSuccess = { _ ->
+                                    navController.navigate("home") {
+                                        popUpTo("auth") { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
                         composable("home") {
                             HomeScreen(
                                 discoveredPeers = discoveredPeers,

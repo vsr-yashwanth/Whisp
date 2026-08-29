@@ -689,6 +689,117 @@ body.dark-theme {
     margin-top: 8px;
 }
 
+/* Admin Login Screen */
+.login-view-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(circle at center, #15151e 0%, #0a0a0c 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.login-card {
+    width: 440px;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+.login-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+}
+
+.login-header h2 {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.db-sync-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--signal-emerald);
+    background: rgba(16, 185, 129, 0.12);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-family: var(--font-mono);
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.btn-block {
+    width: 100%;
+    padding: 12px;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    margin-top: 6px;
+}
+
+.quick-credentials-box {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-subtle);
+    padding: 10px 12px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.quick-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.quick-btns-row {
+    display: flex;
+    gap: 8px;
+}
+
+.quick-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-pure);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.quick-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.login-error-msg {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--signal-rose);
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    text-align: center;
+}
+
 .hidden {
     display: none !important;
 }

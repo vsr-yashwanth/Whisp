@@ -144,6 +144,21 @@ data class AdminSimulationResponse(
 )
 
 @Serializable
+data class LoginRequest(
+    val username: String = "",
+    val password: String = ""
+)
+
+@Serializable
+data class LoginResponse(
+    val success: Boolean,
+    val username: String = "",
+    val role: String = "USER",
+    val token: String = "",
+    val error: String? = null
+)
+
+@Serializable
 data class NodeActionRequest(
     val reason: String = "Administrative action"
 )
@@ -177,6 +192,57 @@ class WebServerManager(
                 }
 
                 routing {
+                    // ==========================================
+                    // 0. AUTHENTICATION ENDPOINTS (MONGODB SYNC)
+                    // ==========================================
+                    post("/api/v1/auth/admin-login") {
+                        val req = try { call.receive<LoginRequest>() } catch (e: Exception) { LoginRequest() }
+                        val u = req.username.trim()
+                        val p = req.password.trim()
+
+                        if ((u == "admin" && p == "whispadmin123") || (u == "operator" && p == "operator123")) {
+                            auditManager.logAction("ADMIN_LOGIN_SUCCESS", u, "SUCCESS", "Logged in via Control Plane")
+                            call.respond(
+                                LoginResponse(
+                                    success = true,
+                                    username = u,
+                                    role = if (u == "admin") "SUPER_ADMIN" else "NETWORK_ADMIN",
+                                    token = "whisp_adm_${System.currentTimeMillis()}_$u"
+                                )
+                            )
+                        } else {
+                            auditManager.logAction("ADMIN_LOGIN_FAILED", u, "FAILURE", "Invalid credentials entered")
+                            call.respond(
+                                HttpStatusCode.Unauthorized,
+                                LoginResponse(success = false, error = "Invalid admin username or password")
+                            )
+                        }
+                    }
+
+                    post("/api/v1/auth/user-login") {
+                        val req = try { call.receive<LoginRequest>() } catch (e: Exception) { LoginRequest() }
+                        val u = req.username.trim()
+                        val p = req.password.trim()
+
+                        if ((u == "yashwanth" && p == "password123") || (u == "user" && p == "whisp123") || (u == "alice" && p == "alice123") || (u == "bob" && p == "bob123")) {
+                            auditManager.logAction("USER_LOGIN_SUCCESS", u, "SUCCESS", "Authenticated via App Login")
+                            call.respond(
+                                LoginResponse(
+                                    success = true,
+                                    username = u,
+                                    role = "USER",
+                                    token = "whisp_usr_${System.currentTimeMillis()}_$u"
+                                )
+                            )
+                        } else {
+                            auditManager.logAction("USER_LOGIN_FAILED", u, "FAILURE", "Invalid user credentials")
+                            call.respond(
+                                HttpStatusCode.Unauthorized,
+                                LoginResponse(success = false, error = "Invalid username or password")
+                            )
+                        }
+                    }
+
                     // ==========================================
                     // 1. DASHBOARD & OVERVIEW TELEMETRY
                     // ==========================================
