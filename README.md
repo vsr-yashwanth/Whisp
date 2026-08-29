@@ -75,8 +75,8 @@ Each Whisp node hosts an internal **Ktor HTTP web server** (`http://<device-ip>:
 ├────────────────────────────────────────────────────────┤
 │  [ UI Layer ]                                          │
 │  - Jetpack Compose Obsidian Theme                      │
-│  - Real-Time Mesh Radar Visualizer (Canvas 30 FPS)      │
-│  - Interactive Cryptographic Route Inspector Dialog   │
+│  - Real-Time Mesh Radar Visualizer (Canvas 30 FPS)     │
+│  - Interactive Cryptographic Route Inspector Dialog    │
 ├────────────────────────────────────────────────────────┤
 │  [ Application & State Engine ]                        │
 │  - ChatViewModel (StateFlow & Coroutines)              │
