@@ -43,7 +43,7 @@
 
     <application
         android:name="com.example.offlinechat.OfflineChatApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory"
         android:debuggable="true"
         android:extractNativeLibs="false"

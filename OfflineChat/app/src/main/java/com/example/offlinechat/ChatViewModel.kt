@@ -109,7 +109,7 @@ class ChatViewModel(
                 val hopsList = parseHopTrace(msg.hopTrace)
 
                 val packet = MeshPacket(
-                    protocolVersion = 2,
+                    protocolVersion = 4,
                     packetType = PacketType.MESSAGE,
                     packetId = UUID.randomUUID().toString(),
                     messageId = msg.id,
@@ -122,7 +122,8 @@ class ChatViewModel(
                     payload = transitBase64,
                     hops = hopsList
                 )
-                transport.sendData(packet.toJsonString().toByteArray())
+                val signedPacket = cryptoManager.signPacketEnvelope(packet)
+                transport.sendData(signedPacket.toJsonString().toByteArray())
                 chatDao.updateMessageStatus(msg.id, "SENT")
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Failed to send pending message", e)
@@ -186,7 +187,7 @@ class ChatViewModel(
 
                 // 4. Construct versioned MeshPacket protocol instance
                 val packet = MeshPacket(
-                    protocolVersion = 2,
+                    protocolVersion = 4,
                     packetType = if (isEmergency) PacketType.SOS else PacketType.MESSAGE,
                     packetId = UUID.randomUUID().toString(),
                     messageId = msgId,
@@ -200,8 +201,10 @@ class ChatViewModel(
                     hops = listOf(initialHop)
                 )
 
+                val signedPacket = cryptoManager.signPacketEnvelope(packet)
+
                 // Broadcast network packet across transport
-                transport.sendData(packet.toJsonString().toByteArray())
+                transport.sendData(signedPacket.toJsonString().toByteArray())
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Failed to send message", e)
             }

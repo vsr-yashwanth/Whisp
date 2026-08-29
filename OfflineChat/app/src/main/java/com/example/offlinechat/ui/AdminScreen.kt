@@ -29,7 +29,11 @@ import com.example.offlinechat.OfflineChatApp
 import com.example.offlinechat.data.Message
 import com.example.offlinechat.network.Peer
 import com.example.offlinechat.routing.RouteCandidate
+import com.example.offlinechat.sdk.SensorTelemetryDemo
 import com.example.offlinechat.security.CryptoManager
+import com.example.offlinechat.simulation.ChaosConfig
+import com.example.offlinechat.simulation.SimulatedNetwork
+import com.example.offlinechat.simulation.SimulationMetrics
 import com.example.offlinechat.ui.theme.*
 import org.json.JSONArray
 import java.text.SimpleDateFormat
@@ -52,7 +56,6 @@ fun AdminScreen(
 
     var recentMessages by remember { mutableStateOf<List<Message>>(emptyList()) }
     var totalMessageCount by remember { mutableStateOf(0) }
-    val bufferedCount by chatDao.getBufferedPacketCount().collectAsState(initial = 0)
     val dtnStorageBytes by chatDao.getTotalDtnStorageBytes().collectAsState(initial = 0L)
     val dtnBundleCount by chatDao.getDtnBundleCount().collectAsState(initial = 0)
 
@@ -65,6 +68,10 @@ fun AdminScreen(
 
     var selectedPeer by remember { mutableStateOf<Peer?>(null) }
     var inspectingCandidate by remember { mutableStateOf<RouteCandidate?>(null) }
+
+    var lastSimulationResult by remember { mutableStateOf<SimulationMetrics?>(null) }
+    var isSensorRunning by remember { mutableStateOf(false) }
+    val sensorDemo = remember { SensorTelemetryDemo() }
 
     LaunchedEffect(Unit) {
         chatDao.getAllMessages().collect { msgs ->
@@ -90,9 +97,9 @@ fun AdminScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("NETWORK GRID V3", fontWeight = FontWeight.Bold, letterSpacing = 1.sp, style = MaterialTheme.typography.titleMedium, color = PureWhite)
+                        Text("NETWORK GRID V4", fontWeight = FontWeight.Bold, letterSpacing = 1.sp, style = MaterialTheme.typography.titleMedium, color = PureWhite)
                         Text(
-                            text = if (isGlobalActive) "GLOBAL GATEWAY ACTIVE" else "DTN ADAPTIVE MESH",
+                            text = if (isGlobalActive) "GLOBAL GATEWAY ACTIVE" else "AUTONOMOUS DTN EDGE",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isGlobalActive) SignalEmerald else TextSecondary,
@@ -154,7 +161,7 @@ fun AdminScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // V3 Partition & DTN Quota Card
+                // V4 Partition & DTN Quota Card
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -197,6 +204,87 @@ fun AdminScreen(
                             Text("Reconciliation State", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                             Text(partitionStatus.reconciliationStatus, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = SignalEmerald)
                         }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // V4 Simulation & Chaos Benchmark Card
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(SurfaceDark)
+                        .border(1.dp, SurfaceBorder, RoundedCornerShape(16.dp))
+                        .padding(14.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("CHAOS BENCHMARK ENGINE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = PureWhite)
+                            Button(
+                                onClick = {
+                                    val net = SimulatedNetwork("Scenario A — 50-Node Mesh", ChaosConfig(seed = 849217L, packetLossRate = 0.05f))
+                                    for (i in 1..25) net.addNode("N-$i", "Node $i")
+                                    for (i in 1..24) net.connectNodes("N-$i", "N-${i + 1}")
+                                    for (i in 1..30) net.dispatchPacket("N-1", "N-25", "Chaos payload $i")
+                                    lastSimulationResult = net.generateBenchmarkReport()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = PureWhite),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("RUN CHAOS BENCHMARK", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ObsidianBlack)
+                            }
+                        }
+
+                        if (lastSimulationResult != null) {
+                            val res = lastSimulationResult!!
+                            Divider(color = SurfaceBorderSubtle)
+                            Text("Scenario: ${res.scenarioName} (Seed: ${res.randomSeed})", fontSize = 11.sp, color = TextSecondary)
+                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Text("Delivery: ${"%.1f".format(res.deliveryRatePercent)}%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SignalEmerald)
+                                Text("Avg Latency: ${"%.1f".format(res.averageLatencyMs)}ms", fontSize = 11.sp, color = PureWhite)
+                                Text("Avg Hops: ${"%.1f".format(res.averageHops)}", fontSize = 11.sp, color = PureWhite)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // V4 Autonomous Sensor Telemetry Demo Card
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(SurfaceDark)
+                        .border(1.dp, SurfaceBorder, RoundedCornerShape(16.dp))
+                        .padding(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("AUTONOMOUS SENSOR DEMO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = PureWhite)
+                            Text("Simulates headless sensor publishing telemetry", fontSize = 11.sp, color = TextSecondary)
+                        }
+                        Switch(
+                            checked = isSensorRunning,
+                            onCheckedChange = { running ->
+                                isSensorRunning = running
+                                if (running) sensorDemo.startPeriodicTelemetry() else sensorDemo.stop()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = PureWhite,
+                                checkedTrackColor = SurfaceElevated
+                            )
+                        )
                     }
                 }
 

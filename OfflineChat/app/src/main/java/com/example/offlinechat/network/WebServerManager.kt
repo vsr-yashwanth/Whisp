@@ -75,7 +75,7 @@ class WebServerManager(
         if (server != null) return
         
         CoroutineScope(Dispatchers.IO).launch {
-            server = embeddedServer(CIO, port = 8080) {
+            server = embeddedServer(CIO, host = "127.0.0.1", port = 8080) {
                 install(ContentNegotiation) {
                     json()
                 }
@@ -123,93 +123,6 @@ class WebServerManager(
                         } catch (e: Exception) {
                             call.respond(HttpStatusCode.BadRequest, GenericWebResponse(false, e.localizedMessage ?: "Invalid packet"))
                         }
-                    }
-
-                    // MongoDB-style Document API for Real-time Database
-                    get("/api/db/messages") {
-                        val allMessages = chatDao.getAllMessages().firstOrNull() ?: emptyList()
-                        val documents = allMessages.map { msg ->
-                            val decrypted = cryptoManager.decryptFromStorage(msg.encryptedPayload)
-                            MongoMessageDocument(
-                                _id = msg.id,
-                                conversationId = msg.conversationId,
-                                senderId = msg.senderId,
-                                decryptedText = decrypted,
-                                encryptedPayload = msg.encryptedPayload,
-                                timestamp = msg.timestamp,
-                                status = msg.status,
-                                hopTrace = msg.hopTrace
-                            )
-                        }
-                        call.respond(documents)
-                    }
-
-                    // Send message to DB & mesh via Web
-                    post("/api/db/messages/send") {
-                        try {
-                            val request = call.receive<SendMessageWebRequest>()
-                            if (request.text.isNotBlank()) {
-                                val msgId = UUID.randomUUID().toString()
-                                val timestamp = System.currentTimeMillis()
-                                val storagePayloadBase64 = cryptoManager.encryptForStorage(request.text.toByteArray())
-                                val transitPayload = cryptoManager.encryptForTransit(request.text.toByteArray())
-                                val transitPayloadBase64 = Base64.encodeToString(transitPayload, Base64.NO_WRAP)
-
-                                val initialHop = JSONObject().apply {
-                                    put("nodeId", "WebAdmin-Node")
-                                    put("nodeName", "Web Admin Console")
-                                    put("transport", "WEB_GATEWAY")
-                                    put("timestamp", timestamp)
-                                    put("latencyMs", 0L)
-                                }
-                                val hopsArray = JSONArray().apply { put(initialHop) }
-
-                                // Ensure conversation exists in SQLite before inserting child message (Foreign Key)
-                                chatDao.insertConversation(
-                                    com.example.offlinechat.data.Conversation(
-                                        id = request.conversationId,
-                                        peerId = request.conversationId,
-                                        createdAt = timestamp,
-                                        lastMessageAt = timestamp
-                                    )
-                                )
-
-                                val dbMsg = Message(
-                                    id = msgId,
-                                    conversationId = request.conversationId,
-                                    senderId = "WebAdmin",
-                                    encryptedPayload = storagePayloadBase64,
-                                    timestamp = timestamp,
-                                    status = "SENT",
-                                    hopTrace = hopsArray.toString()
-                                )
-                                chatDao.insertMessage(dbMsg)
-
-                                // Broadcast to mesh transport so connected devices get it
-                                val json = JSONObject().apply {
-                                    put("version", 1)
-                                    put("type", "MESSAGE")
-                                    put("messageId", msgId)
-                                    put("senderId", "WebAdmin")
-                                    put("timestamp", timestamp)
-                                    put("payload", transitPayloadBase64)
-                                    put("hops", hopsArray)
-                                }
-                                transport.sendData(json.toString().toByteArray())
-
-                                call.respond(GenericWebResponse(true, "Message inserted and queued for mesh broadcast!"))
-                            } else {
-                                call.respond(HttpStatusCode.BadRequest, GenericWebResponse(false, "Text cannot be empty"))
-                            }
-                        } catch (e: Exception) {
-                            call.respond(HttpStatusCode.InternalServerError, GenericWebResponse(false, e.localizedMessage ?: "Error sending message"))
-                        }
-                    }
-
-                    // Wipe / Reset DB for testing
-                    post("/api/db/clear") {
-                        chatDao.clearAllMessages()
-                        call.respond(GenericWebResponse(true, "All messages cleared from database"))
                     }
 
                     // Serve Static Assets from Android 'assets/web/' directory

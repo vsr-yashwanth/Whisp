@@ -34,7 +34,8 @@ fun HomeScreen(
     onConnectToPeer: (Peer) -> Unit = {},
     onNavigateToChat: (String) -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToAdmin: () -> Unit
+    onNavigateToAdmin: () -> Unit,
+    onNavigateToCrdtNotes: () -> Unit = {}
 ) {
     if (pairingRequest != null) {
         PairingDialog(
@@ -66,6 +67,9 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToCrdtNotes) {
+                        Icon(Icons.Rounded.Edit, contentDescription = "Shared Notes", tint = TitaniumLight, modifier = Modifier.size(20.dp))
+                    }
                     IconButton(onClick = onNavigateToAdmin) {
                         Icon(Icons.Rounded.Share, contentDescription = "Network Grid", tint = TitaniumLight, modifier = Modifier.size(20.dp))
                     }

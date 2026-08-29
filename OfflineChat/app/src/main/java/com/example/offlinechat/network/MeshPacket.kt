@@ -33,7 +33,7 @@ object PacketPriority {
 }
 
 data class MeshPacket(
-    val protocolVersion: Int = 3,
+    val protocolVersion: Int = 4,
     val packetType: PacketType = PacketType.MESSAGE,
     val packetId: String = UUID.randomUUID().toString(),
     val messageId: String = packetId,
@@ -49,8 +49,16 @@ data class MeshPacket(
     val hops: List<HopRecord> = emptyList(),
     val batteryLevel: Int = -1,      // 0-100% (-1 = unknown)
     val isCharging: Boolean = false,
+    val signature: String = "",       // Base64 Ed25519 envelope signature
+    val senderPublicKey: String = "", // Base64 serialized Ed25519 public key
     val extraMetadata: Map<String, String> = emptyMap()
 ) {
+
+    fun computeSigningPayload(): ByteArray {
+        val actualHash = computeHash(payload)
+        val canonical = "$protocolVersion|$packetId|$messageId|$senderId|$recipientId|$timestamp|$ttl|$priority|$actualHash"
+        return canonical.toByteArray(Charsets.UTF_8)
+    }
 
     fun toJsonString(): String {
         val json = JSONObject().apply {
@@ -69,6 +77,8 @@ data class MeshPacket(
             put("payloadHash", payloadHash)
             put("batteryLevel", batteryLevel)
             put("isCharging", isCharging)
+            put("signature", signature)
+            put("senderPublicKey", senderPublicKey)
 
             // Serialize hops
             val hopsArray = JSONArray()
@@ -134,7 +144,6 @@ data class MeshPacket(
             return try {
                 val obj = JSONObject(jsonStr)
 
-                // Backward-compatibility fallback for legacy V1 packets
                 val typeStr = obj.optString("type", "MESSAGE")
                 val packetType = try {
                     PacketType.valueOf(typeStr)
@@ -173,7 +182,7 @@ data class MeshPacket(
                 val payloadHash = obj.optString("payloadHash", computeHash(rawPayload))
 
                 MeshPacket(
-                    protocolVersion = obj.optInt("version", 3),
+                    protocolVersion = obj.optInt("version", 4),
                     packetType = packetType,
                     packetId = obj.optString("packetId", obj.optString("id", UUID.randomUUID().toString())),
                     messageId = obj.optString("messageId", obj.optString("id", UUID.randomUUID().toString())),
@@ -189,6 +198,8 @@ data class MeshPacket(
                     hops = hopsList,
                     batteryLevel = obj.optInt("batteryLevel", -1),
                     isCharging = obj.optBoolean("isCharging", false),
+                    signature = obj.optString("signature", ""),
+                    senderPublicKey = obj.optString("senderPublicKey", ""),
                     extraMetadata = metadataMap
                 )
             } catch (e: Exception) {

@@ -90,6 +90,34 @@ class CryptoManager(private val context: Context) {
         return signer.sign(data)
     }
 
+    fun signPacketEnvelope(packet: com.example.offlinechat.network.MeshPacket): com.example.offlinechat.network.MeshPacket {
+        return try {
+            val payloadBytes = packet.computeSigningPayload()
+            val sigBytes = signData(payloadBytes)
+            val sigBase64 = Base64.encodeToString(sigBytes, Base64.NO_WRAP)
+            val pubKey = getSerializedPublicKey()
+            packet.copy(signature = sigBase64, senderPublicKey = pubKey)
+        } catch (e: Exception) {
+            packet
+        }
+    }
+
+    fun verifyPacketSignature(packet: com.example.offlinechat.network.MeshPacket): Boolean {
+        if (packet.signature.isBlank() || packet.senderPublicKey.isBlank()) {
+            return false // Fail closed for unsigned packets in V4
+        }
+        return try {
+            val pubKeyBytes = Base64.decode(packet.senderPublicKey, Base64.NO_WRAP)
+            val publicKeysetHandle = CleartextKeysetHandle.read(JsonKeysetReader.withBytes(pubKeyBytes))
+            val verifier = publicKeysetHandle.getPrimitive(PublicKeyVerify::class.java)
+            val sigBytes = Base64.decode(packet.signature, Base64.NO_WRAP)
+            verifier.verify(sigBytes, packet.computeSigningPayload())
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun generateSessionPublicKey(): String {
         sessionPrivateKeyHandle = KeysetHandle.generateNew(KeyTemplates.get("ECIES_P256_HKDF_HMAC_SHA256_AES128_GCM"))
         val publicKeysetHandle = sessionPrivateKeyHandle!!.publicKeysetHandle

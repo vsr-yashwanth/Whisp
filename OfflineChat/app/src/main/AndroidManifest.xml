@@ -23,7 +23,7 @@
 
     <application
         android:name=".OfflineChatApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:label="@string/app_name"
         android:supportsRtl="true"

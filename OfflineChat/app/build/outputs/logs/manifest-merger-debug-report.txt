@@ -187,7 +187,7 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\Admin\.gradle\cach
 	android:label
 		ADDED from D:\Yashwanth\Programming\Offline app\OfflineChat\app\src\main\AndroidManifest.xml:28:9-41
 	android:allowBackup
-		ADDED from D:\Yashwanth\Programming\Offline app\OfflineChat\app\src\main\AndroidManifest.xml:26:9-35
+		ADDED from D:\Yashwanth\Programming\Offline app\OfflineChat\app\src\main\AndroidManifest.xml:26:9-36
 	android:theme
 		ADDED from D:\Yashwanth\Programming\Offline app\OfflineChat\app\src\main\AndroidManifest.xml:30:9-49
 	android:usesCleartextTraffic

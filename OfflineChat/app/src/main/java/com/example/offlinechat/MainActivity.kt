@@ -109,6 +109,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNavigateToAdmin = {
                                     navController.navigate("admin")
+                                },
+                                onNavigateToCrdtNotes = {
+                                    navController.navigate("crdt_notes")
                                 }
                             )
                         }
@@ -140,6 +143,11 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("admin") {
                             AdminScreen(
+                                onNavigateBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("crdt_notes") {
+                            com.example.offlinechat.ui.CrdtNotesScreen(
                                 onNavigateBack = { navController.popBackStack() }
                             )
                         }

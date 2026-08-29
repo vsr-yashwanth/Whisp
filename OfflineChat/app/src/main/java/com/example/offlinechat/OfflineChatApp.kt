@@ -50,6 +50,7 @@ class OfflineChatApp : Application() {
         private set
     lateinit var mobilityClassifier: MobilityClassifier
         private set
+    val rateLimiter = com.example.offlinechat.security.AntiFloodRateLimiter()
 
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -123,13 +124,25 @@ class OfflineChatApp : Application() {
                     return@launch
                 }
 
-                // 2. Deduplication check: Drop if already processed within TTL window
+                // 2. Anti-Flooding Rate Limiter: Drop if spamming
+                if (!rateLimiter.allowPacket(packet.senderId)) {
+                    Log.w("OfflineChatApp", "Dropped packet from (${packet.senderId}) due to rate limiting")
+                    return@launch
+                }
+
+                // 3. Cryptographic Envelope Signature Verification: Fail-closed on tampering
+                if (packet.signature.isNotBlank() && !cryptoManager.verifyPacketSignature(packet)) {
+                    Log.e("OfflineChatApp", "SECURITY INVARIANT VIOLATION: Dropped forged/tampered packet (${packet.packetId})")
+                    return@launch
+                }
+
+                // 4. Deduplication check: Drop if already processed within TTL window
                 if (deduplicationCache.isDuplicateOrRecord(packet.packetId, packet.payloadHash)) {
                     Log.d("OfflineChatApp", "Dropped duplicate packet (${packet.packetId})")
                     return@launch
                 }
 
-                // 3. TTL Validation: Drop if packet exceeded max hops
+                // 5. TTL Validation: Drop if packet exceeded max hops
                 if (packet.ttl <= 0) {
                     Log.w("OfflineChatApp", "Dropped packet (${packet.packetId}) due to expired TTL (0)")
                     return@launch

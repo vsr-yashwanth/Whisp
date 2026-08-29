@@ -83,8 +83,8 @@
 44-->D:\Yashwanth\Programming\Offline app\OfflineChat\app\src\main\AndroidManifest.xml:24:5-45:19
 45        android:name="com.example.offlinechat.OfflineChatApp"
 45-->D:\Yashwanth\Programming\Offline app\OfflineChat\app\src\main\AndroidManifest.xml:25:9-39
-46        android:allowBackup="true"
-46-->D:\Yashwanth\Programming\Offline app\OfflineChat\app\src\main\AndroidManifest.xml:26:9-35
+46        android:allowBackup="false"
+46-->D:\Yashwanth\Programming\Offline app\OfflineChat\app\src\main\AndroidManifest.xml:26:9-36
 47        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
 47-->[androidx.core:core:1.12.0] C:\Users\Admin\.gradle\caches\transforms-3\04b5936cf70585fe5227ada488037a2d\transformed\core-1.12.0\AndroidManifest.xml:28:18-86
 48        android:debuggable="true"
