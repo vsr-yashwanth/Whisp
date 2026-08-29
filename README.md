@@ -6,13 +6,13 @@
 [![Android](https://img.shields.io/badge/Platform-Android%2014%2B-black?style=for-the-badge&logo=android)](https://www.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-black?style=for-the-badge&logo=kotlin)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-black?style=for-the-badge&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
+[![MongoDB](https://img.shields.io/badge/Database-MongoDB%20Local-green?style=for-the-badge&logo=mongodb)](https://www.mongodb.com)
 [![Admin Web](https://img.shields.io/badge/Admin%20Web-Control%20Plane%20v4-black?style=for-the-badge&logo=html5)](https://github.com/vsr-yashwanth/Whisp/tree/v4)
-[![Security](https://img.shields.io/badge/Security-Ed25519%20AEAD%20%2B%20Zero--Trust-black?style=for-the-badge&logo=shield)](https://github.com/google/tink)
 [![Branch v4](https://img.shields.io/badge/Source%20Code-Branch%20v4%20(Latest)-white?style=for-the-badge&logo=git)](https://github.com/vsr-yashwanth/Whisp/tree/v4)
 
 **Whisp** is a zero-trust, delay-tolerant, decentralized mesh networking platform engineered for mission-critical peer-to-peer communication, state replication, and distributed apps operating across intermittently connected devices without cellular networks, ISPs, or central servers.
 
-[📥 Download APK](#-direct-apk-installation-recommended) • [Source Code (v4 Branch)](https://github.com/vsr-yashwanth/Whisp/tree/v4) • [Admin Control Plane](#-web-based-admin-control-plane) • [Security & Invariants](#-zero-trust-security-invariants)
+[📥 Download APK](#-direct-apk-installation-recommended) • [Source Code (v4 Branch)](https://github.com/vsr-yashwanth/Whisp/tree/v4) • [Admin Control Plane](#-web-based-admin-control-plane) • [🔐 Authentication & MongoDB](#-authentication--pre-injected-mongodb-credentials) • [Security Invariants](#-zero-trust-security-invariants)
 
 </div>
 
@@ -48,6 +48,22 @@ graph TD
 
 ---
 
+## 🔐 Authentication & Pre-Injected MongoDB Credentials
+
+Whisp stores and authenticates users and operators directly against your local computer's **MongoDB database** (`mongodb://localhost:27017/whisp_db`):
+
+| Scope | Username | Password | Role | Permissions |
+| :--- | :--- | :--- | :--- | :--- |
+| **Admin Control Plane Web** | `admin` | `whispadmin123` | `SUPER_ADMIN` | Full control plane, chaos simulator, node isolation, audit logs |
+| **Admin Control Plane Web** | `operator` | `operator123` | `NETWORK_ADMIN` | Topology, node management, routing inspector |
+| **Android App User** | `yashwanth` | `password123` | `USER` | P2P encrypted messaging, DTN custody, offline notes |
+| **Android App User** | `user` | `whisp123` | `USER` | P2P encrypted messaging, DTN custody, offline notes |
+
+> [!TIP]
+> Run `python init_mongodb.py` at any time to re-seed or verify pre-injected credentials in your local MongoDB instance.
+
+---
+
 ## 📲 Direct APK Installation *(Recommended)*
 
 You can install Whisp directly on any physical Android phone without needing Android Studio or a computer:
@@ -56,7 +72,7 @@ You can install Whisp directly on any physical Android phone without needing And
    👉 **[https://github.com/vsr-yashwanth/Whisp/releases](https://github.com/vsr-yashwanth/Whisp/releases)**
 2. Tap on the latest release and download **`app-debug.apk`**.
 3. Tap **Open** / **Install** *(if prompted by Android, tap "Allow installation from unknown sources")*.
-4. Launch **Whisp**, grant permissions, and communicate securely off-grid!
+4. Launch **Whisp**, login with `yashwanth / password123`, and communicate securely off-grid!
 
 ---
 
@@ -64,6 +80,7 @@ You can install Whisp directly on any physical Android phone without needing And
 
 The **Whisp Admin Control Plane** provides network operators, administrators, and security researchers with real-time operational control without compromising the Zero-Trust privacy guarantee:
 
+- **🔐 Admin Authentication Gate**: Secure password authentication against local MongoDB with quick-credential selectors.
 - **📊 Network Overview & Health Score**: Multi-factor scoring (0–100) calculated live from availability, DTN quota, and partition health.
 - **🌐 Interactive 2D Topology Graph**: Full HTML5 canvas mesh visualizer with real-time radar sweep and node inspection.
 - **📱 Node Management & Quarantine**: Isolate suspicious nodes from routing and relaying with mandatory audit reason tracking.
@@ -102,7 +119,7 @@ The **Whisp Admin Control Plane** provides network operators, administrators, an
 ## 📦 Branches
 
 - **[`main` Branch](https://github.com/vsr-yashwanth/Whisp/tree/main)**: Documentation & APK releases.
-- **[`v4` Branch (Latest Security & Admin Platform)](https://github.com/vsr-yashwanth/Whisp/tree/v4)**: Complete Whisp Security V4 & Admin Control Plane Platform.
+- **[`v4` Branch (Latest Security & Admin Platform)](https://github.com/vsr-yashwanth/Whisp/tree/v4)**: Complete Whisp Security V4, Admin Control Plane, and MongoDB Auth Platform.
 - **[`v3` Branch](https://github.com/vsr-yashwanth/Whisp/tree/v3)**: Whisp V3 Delay-Tolerant Mesh codebase.
 - **[`v2` Branch](https://github.com/vsr-yashwanth/Whisp/tree/v2)**: Whisp V2 Adaptive Mesh codebase.
 - **[`V1` Branch](https://github.com/vsr-yashwanth/Whisp/tree/V1)**: Original Whisp V1 codebase.
