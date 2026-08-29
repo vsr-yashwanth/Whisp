@@ -183,7 +183,7 @@ class WebServerManager(
         if (server != null) return
 
         CoroutineScope(Dispatchers.IO).launch {
-            server = embeddedServer(CIO, host = "127.0.0.1", port = 8080) {
+            server = embeddedServer(CIO, host = "0.0.0.0", port = 8080) {
                 install(ContentNegotiation) {
                     json()
                 }
