@@ -67,51 +67,82 @@ class SimulatedNetwork(
         links[key2] = SimulatedLink(targetId, sourceId, latencyMs, lossRate)
     }
 
+    fun findShortestPath(fromNodeId: String, toNodeId: String): List<String>? {
+        if (fromNodeId == toNodeId) return listOf(fromNodeId)
+        val queue = java.util.ArrayDeque<List<String>>()
+        val visited = mutableSetOf<String>()
+        queue.add(listOf(fromNodeId))
+        visited.add(fromNodeId)
+
+        while (queue.isNotEmpty()) {
+            val path = queue.removeFirst()
+            val curr = path.last()
+
+            val neighbors = links.values
+                .filter { it.sourceId == curr && it.isUp && (nodes[it.targetId]?.isOnline == true) }
+                .map { it.targetId }
+
+            for (neighbor in neighbors) {
+                if (neighbor == toNodeId) {
+                    return path + neighbor
+                }
+                if (visited.add(neighbor)) {
+                    queue.add(path + neighbor)
+                }
+            }
+        }
+        return null
+    }
+
     fun dispatchPacket(fromNodeId: String, toNodeId: String, payload: String, priority: Int = 10): Boolean {
         packetsSentCount++
         val source = nodes[fromNodeId] ?: return false
         val dest = nodes[toNodeId] ?: return false
 
-        if (!source.isOnline) return false
-
-        // Chaos packet loss check
-        if (rng.nextFloat() < config.packetLossRate) {
-            // Attempt DTN store-and-forward fallback
+        if (!source.isOnline || !dest.isOnline) {
             source.dtnStorage.add(payload)
             return false
         }
 
-        // Direct link or 1-hop delivery simulation
-        val directKey = "$fromNodeId->$toNodeId"
-        val directLink = links[directKey]
-
-        if (directLink != null && directLink.isUp && dest.isOnline) {
-            val latency = directLink.latencyMs + (if (rng.nextFloat() < 0.2f) config.latencySpikeMs else 0L)
-            dest.inbox.add(payload)
-            packetsDeliveredCount++
-            totalLatencyAccumulator += latency
-            totalHopsAccumulator += 1
-            return true
+        // Find active multi-hop path via BFS
+        val path = findShortestPath(fromNodeId, toNodeId)
+        if (path == null || path.size < 2) {
+            // Store in DTN custody storage
+            source.dtnStorage.add(payload)
+            return false
         }
 
-        // Multi-hop relay attempt
-        val onlineRelays = nodes.values.filter { it.isOnline && it.id != fromNodeId && it.id != toNodeId }
-        for (relay in onlineRelays) {
-            val hop1 = links["$fromNodeId->${relay.id}"]
-            val hop2 = links["${relay.id}->$toNodeId"]
-            if (hop1 != null && hop1.isUp && hop2 != null && hop2.isUp && dest.isOnline) {
-                val latency = hop1.latencyMs + hop2.latencyMs
-                dest.inbox.add(payload)
-                packetsDeliveredCount++
-                totalLatencyAccumulator += latency
-                totalHopsAccumulator += 2
-                return true
+        val hops = path.size - 1
+        var totalLatency = 0L
+        var failed = false
+
+        for (i in 0 until hops) {
+            val u = path[i]
+            val v = path[i + 1]
+            val link = links["$u->$v"]
+            if (link == null || !link.isUp) {
+                failed = true
+                break
             }
+            // Loss check per hop
+            val lossRate = if (link.lossRate > 0) link.lossRate else config.packetLossRate
+            if (rng.nextFloat() < lossRate) {
+                failed = true
+                break
+            }
+            totalLatency += link.latencyMs + (if (rng.nextFloat() < 0.15f) config.latencySpikeMs else 0L)
         }
 
-        // Store-and-forward fallback if path broken
-        source.dtnStorage.add(payload)
-        return false
+        if (failed) {
+            source.dtnStorage.add(payload)
+            return false
+        }
+
+        dest.inbox.add(payload)
+        packetsDeliveredCount++
+        totalLatencyAccumulator += totalLatency
+        totalHopsAccumulator += hops
+        return true
     }
 
     fun injectRandomChaos() {

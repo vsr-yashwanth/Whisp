@@ -378,13 +378,43 @@ class WebServerManager(
                     // ==========================================
                     post("/api/v1/admin/simulations/run") {
                         val req = try { call.receive<AdminSimulationRequest>() } catch (e: Exception) { AdminSimulationRequest() }
+                        val lossRate = when (req.scenario) {
+                            "SCENARIO_A" -> 0.01f
+                            "SCENARIO_B" -> 0.08f
+                            "SCENARIO_C" -> 0.05f
+                            "SCENARIO_D" -> 0.12f
+                            "SCENARIO_E" -> 0.03f
+                            else -> req.packetLossRate
+                        }
                         val net = SimulatedNetwork(
                             scenarioName = req.scenario,
-                            config = ChaosConfig(seed = req.randomSeed, packetLossRate = req.packetLossRate)
+                            config = ChaosConfig(seed = req.randomSeed, packetLossRate = lossRate)
                         )
-                        for (i in 1..req.nodeCount) net.addNode("N-$i", "Device $i")
-                        for (i in 1 until req.nodeCount) net.connectNodes("N-$i", "N-${i + 1}")
-                        for (i in 1..30) net.dispatchPacket("N-1", "N-${req.nodeCount}", "Sim payload $i")
+                        val n = req.nodeCount.coerceIn(5, 100)
+                        for (i in 1..n) net.addNode("N-$i", "Device $i")
+
+                        // Connect resilient mesh links (neighbor, +2, +3 shortcuts)
+                        for (i in 1 until n) {
+                            net.connectNodes("N-$i", "N-${i + 1}", latencyMs = 15L, lossRate = lossRate)
+                            if (i + 2 <= n) net.connectNodes("N-$i", "N-${i + 2}", latencyMs = 24L, lossRate = lossRate)
+                            if (i + 3 <= n) net.connectNodes("N-$i", "N-${i + 3}", latencyMs = 32L, lossRate = lossRate)
+                        }
+
+                        if (req.scenario == "SCENARIO_C") {
+                            // Partition Scenario
+                            val mid = n / 2
+                            val groupA = (1..mid).map { "N-$it" }.toSet()
+                            val groupB = ((mid + 1)..n).map { "N-$it" }.toSet()
+                            net.simulatePartition(groupA, groupB)
+                            for (i in 1..10) net.dispatchPacket("N-1", "N-$n", "Partitioned Msg $i")
+                            net.healPartition()
+                            for (i in 11..30) net.dispatchPacket("N-1", "N-$n", "Healed Msg $i")
+                        } else {
+                            for (i in 1..30) {
+                                val target = if (i % 2 == 0) "N-$n" else "N-${(n / 2) + 1}"
+                                net.dispatchPacket("N-1", target, "Sim payload $i")
+                            }
+                        }
 
                         val metrics = net.generateBenchmarkReport()
                         auditManager.logAction("RUN_SIMULATION", req.scenario, "SUCCESS", "Seed: ${req.randomSeed}")
