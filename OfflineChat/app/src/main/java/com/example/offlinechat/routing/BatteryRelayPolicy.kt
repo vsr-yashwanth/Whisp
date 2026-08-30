@@ -59,7 +59,7 @@ class BatteryRelayPolicy(private val context: Context) {
      */
     fun shouldRelay(packet: MeshPacket): Boolean {
         // Emergency SOS packets always bypass battery throttling
-        if (packet.priority >= PacketPriority.SOS) {
+        if (packet.priority >= PacketPriority.SOS || packet.packetType == com.example.offlinechat.network.PacketType.SOS) {
             return true
         }
 

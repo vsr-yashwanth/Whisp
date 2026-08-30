@@ -13,9 +13,10 @@ import androidx.room.RoomDatabase
         DtnBundleEntity::class,
         PeerEncounterEntity::class,
         CrdtOperationEntity::class,
-        NetworkEpochEntity::class
+        NetworkEpochEntity::class,
+        FriendContact::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class ChatDatabase : RoomDatabase() {

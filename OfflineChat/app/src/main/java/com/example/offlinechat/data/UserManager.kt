@@ -15,7 +15,8 @@ data class UserAccount(
     val password: String,
     val role: String = "USER", // USER, NETWORK_ADMIN, SUPER_ADMIN
     val status: String = "ACTIVE", // ACTIVE, SUSPENDED
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val blockchainId: String = computeBlockchainId(username)
 ) {
     fun toJson(): JSONObject {
         val obj = JSONObject()
@@ -24,17 +25,31 @@ data class UserAccount(
         obj.put("role", role)
         obj.put("status", status)
         obj.put("createdAt", createdAt)
+        obj.put("blockchainId", blockchainId)
         return obj
     }
 
     companion object {
+        fun computeBlockchainId(username: String): String {
+            return try {
+                val md = java.security.MessageDigest.getInstance("SHA-256")
+                val hash = md.digest("whisp_blockchain_id_${username.lowercase().trim()}".toByteArray(Charsets.UTF_8))
+                val hex = hash.joinToString("") { "%02x".format(it) }
+                "0x" + hex.take(40)
+            } catch (e: Exception) {
+                "0x" + username.hashCode().toString(16).padStart(40, '0').take(40)
+            }
+        }
+
         fun fromJson(obj: JSONObject): UserAccount {
+            val u = obj.optString("username", "")
             return UserAccount(
-                username = obj.optString("username", ""),
+                username = u,
                 password = obj.optString("password", ""),
                 role = obj.optString("role", "USER"),
                 status = obj.optString("status", "ACTIVE"),
-                createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                blockchainId = obj.optString("blockchainId", computeBlockchainId(u))
             )
         }
     }
@@ -109,6 +124,19 @@ class UserManager(private val context: Context) {
     fun findUser(username: String): UserAccount? {
         val clean = username.trim()
         return getAllUsers().firstOrNull { it.username.equals(clean, ignoreCase = true) }
+    }
+
+    fun getBlockchainIdForUser(username: String): String {
+        return UserAccount.computeBlockchainId(username)
+    }
+
+    @Synchronized
+    fun searchUsers(query: String): List<UserAccount> {
+        val q = query.trim().lowercase()
+        if (q.isBlank()) return emptyList()
+        return getAllUsers().filter {
+            it.username.lowercase().contains(q) || it.blockchainId.lowercase().contains(q)
+        }
     }
 
     @Synchronized

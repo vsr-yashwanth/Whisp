@@ -1,5 +1,6 @@
 package com.example.offlinechat.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,12 +20,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.offlinechat.ChatMessage
 import com.example.offlinechat.ChatViewModel
+import com.example.offlinechat.data.UserAccount
 import com.example.offlinechat.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -42,6 +45,17 @@ fun ChatScreen(
     val listState = rememberLazyListState()
 
     var inspectingMessage by remember { mutableStateOf<ChatMessage?>(null) }
+
+    val isSosChannel = peerName == "EMERGENCY_SOS"
+    val isDirectChat = peerName.startsWith("direct_")
+    val directUsername = if (isDirectChat) peerName.removePrefix("direct_") else peerName
+    val directBlockchainId = remember(directUsername) { UserAccount.computeBlockchainId(directUsername) }
+
+    val displayTitle = when {
+        isSosChannel -> "EMERGENCY AUTHORITIES SOS"
+        isDirectChat -> directUsername.replaceFirstChar { it.uppercase() }
+        else -> peerName
+    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -61,24 +75,42 @@ fun ChatScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(
-                            text = peerName,
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = PureWhite
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = displayTitle,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (isSosChannel) Color(0xFFFCA5A5) else PureWhite
+                            )
+                            if (isSosChannel) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFFEF4444))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                ) {
+                                    Text("PRIORITY 100", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                Icons.Rounded.Lock,
+                                if (isSosChannel) Icons.Rounded.Warning else Icons.Rounded.Lock,
                                 contentDescription = null,
                                 modifier = Modifier.size(11.dp),
-                                tint = TextSecondary
+                                tint = if (isSosChannel) Color(0xFFEF4444) else SignalEmerald
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                "Hardware AES-256-GCM",
-                                fontSize = 11.sp,
-                                color = TextSecondary
+                                text = when {
+                                    isSosChannel -> "Direct Multi-hop Authority Broadcast"
+                                    isDirectChat -> "ID: ${directBlockchainId.take(10)}...${directBlockchainId.takeLast(6)}"
+                                    else -> "Hardware AES-256-GCM • Mesh Broadcast"
+                                },
+                                fontSize = 10.sp,
+                                color = if (isSosChannel) Color(0xFFFCA5A5) else TextSecondary,
+                                fontFamily = if (isDirectChat) FontFamily.Monospace else FontFamily.Default
                             )
                         }
                     }
@@ -89,7 +121,7 @@ fun ChatScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = ObsidianBlack,
+                    containerColor = if (isSosChannel) Color(0xFF1E0B10) else ObsidianBlack,
                     titleContentColor = PureWhite
                 )
             )
@@ -115,129 +147,160 @@ fun ChatScreen(
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(CircleShape)
-                                .background(SurfaceDark)
-                                .border(1.dp, SurfaceBorder, CircleShape),
+                                .background(if (isSosChannel) Color(0xFFEF4444).copy(alpha = 0.15f) else SurfaceDark)
+                                .border(1.dp, if (isSosChannel) Color(0xFFEF4444).copy(alpha = 0.5f) else SurfaceBorder, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                Icons.Rounded.Lock,
+                                if (isSosChannel) Icons.Rounded.Warning else Icons.Rounded.Lock,
                                 contentDescription = null,
-                                tint = TextSecondary,
-                                modifier = Modifier.size(20.dp)
+                                tint = if (isSosChannel) Color(0xFFEF4444) else TextSecondary,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
-                            "End-to-End Encrypted Session",
+                            text = if (isSosChannel) "High-Priority Emergency Authority Channel" else if (isDirectChat) "1-on-1 Direct Private Chat" else "End-to-End Encrypted Session",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = PureWhite
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Packets route autonomously across offline mesh nodes.",
+                            text = if (isSosChannel) "Broadcasts are prioritized and relayed across all intermediate nodes." else "Messages are linked to Blockchain IDs for offline delay-tolerant routing.",
                             style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }
             } else {
                 LazyColumn(
-                    state = listState,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
-                    reverseLayout = true
+                    state = listState,
+                    reverseLayout = true,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
                     items(messages.reversed(), key = { it.id }) { msg ->
                         ChatBubble(
                             msg = msg,
+                            isSos = isSosChannel,
                             onInspectRoute = { inspectingMessage = it }
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
                     }
                 }
             }
 
-            // Sleek Minimalist Input Area
-            Surface(
-                color = SurfaceDark,
-                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)
-            ) {
-                Row(
+            // Quick Emergency Presets (Only on Emergency Channel)
+            if (isSosChannel) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                        .navigationBarsPadding(),
+                        .background(Color(0xFF1E0B10))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        "QUICK EMERGENCY BROADCASTS:",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFCA5A5),
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        AssistChip(
+                            onClick = {
+                                viewModel.sendMessage("🚨 MEDICAL EMERGENCY: Urgent medical assistance required at current coordinates.", isEmergency = true)
+                            },
+                            label = { Text("🚑 Medical", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFF2A0E14), labelColor = Color(0xFFFCA5A5))
+                        )
+                        AssistChip(
+                            onClick = {
+                                viewModel.sendMessage("🔥 FIRE / HAZARD: Active fire outbreak detected in local zone.", isEmergency = true)
+                            },
+                            label = { Text("🔥 Fire", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFF2A0E14), labelColor = Color(0xFFFCA5A5))
+                        )
+                        AssistChip(
+                            onClick = {
+                                viewModel.sendMessage("🆘 SEARCH & RESCUE: Trapped / stranded individuals need rescue.", isEmergency = true)
+                            },
+                            label = { Text("🆘 Rescue", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFF2A0E14), labelColor = Color(0xFFFCA5A5))
+                        )
+                    }
+                }
+            }
+
+            // Bottom Input Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(ObsidianBlack)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
                         value = messageText,
                         onValueChange = { messageText = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("Encrypted message...", color = TextMuted, fontSize = 14.sp) },
-                        shape = CircleShape,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = {
-                            if (messageText.isNotBlank()) {
-                                viewModel.sendMessage(messageText.trim())
-                                messageText = ""
-                            }
-                        }),
+                        placeholder = {
+                            Text(
+                                if (isSosChannel) "Broadcast emergency alert..." else "Encrypted message...",
+                                color = TextMuted,
+                                fontSize = 13.sp
+                            )
+                        },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = SurfaceElevated,
-                            unfocusedContainerColor = SurfaceElevated,
+                            focusedContainerColor = SurfaceDark,
+                            unfocusedContainerColor = SurfaceDark,
+                            focusedBorderColor = if (isSosChannel) Color(0xFFEF4444) else SignalEmerald,
                             unfocusedBorderColor = SurfaceBorderSubtle,
-                            focusedBorderColor = SurfaceBorder,
                             focusedTextColor = PureWhite,
                             unfocusedTextColor = PureWhite
-                        )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // SOS Emergency Button
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(SurfaceElevated)
-                            .border(1.dp, SurfaceBorder, CircleShape)
-                            .clickable {
-                                val sosContent = if (messageText.isNotBlank()) "🚨 SOS: ${messageText.trim()}" else "🚨 SOS: EMERGENCY ASSISTANCE REQUESTED"
-                                viewModel.sendMessage(sosContent, isEmergency = true)
-                                messageText = ""
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Rounded.Warning,
-                            contentDescription = "SOS",
-                            tint = ErrorMuted,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-                    
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(PureWhite)
-                            .clickable {
+                        ),
+                        shape = RoundedCornerShape(20.dp),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
                                 if (messageText.isNotBlank()) {
-                                    viewModel.sendMessage(messageText.trim(), isEmergency = false)
+                                    viewModel.sendMessage(messageText, isEmergency = isSosChannel)
                                     messageText = ""
                                 }
-                            },
-                        contentAlignment = Alignment.Center
+                            }
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    IconButton(
+                        onClick = {
+                            if (messageText.isNotBlank()) {
+                                viewModel.sendMessage(messageText, isEmergency = isSosChannel)
+                                messageText = ""
+                            }
+                        },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(if (isSosChannel) Color(0xFFEF4444) else PureWhite)
                     ) {
                         Icon(
                             Icons.Rounded.Send,
                             contentDescription = "Send",
-                            tint = ObsidianBlack,
+                            tint = if (isSosChannel) Color.White else ObsidianBlack,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -250,6 +313,7 @@ fun ChatScreen(
 @Composable
 fun ChatBubble(
     msg: ChatMessage,
+    isSos: Boolean = false,
     onInspectRoute: (ChatMessage) -> Unit
 ) {
     val timeFormatter = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
@@ -263,7 +327,7 @@ fun ChatBubble(
     ) {
         Column(
             horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
-            modifier = Modifier.widthIn(max = 280.dp)
+            modifier = Modifier.widthIn(max = 290.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -275,9 +339,13 @@ fun ChatBubble(
                             bottomEnd = if (isMine) 4.dp else 18.dp
                         )
                     )
-                    .background(if (isMine) PureWhite else SurfaceDark)
+                    .background(
+                        if (isSos && !isMine) Color(0xFF2A0E14)
+                        else if (isMine) PureWhite
+                        else SurfaceDark
+                    )
                     .then(
-                        if (!isMine) Modifier.border(1.dp, SurfaceBorder, RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp))
+                        if (!isMine) Modifier.border(1.dp, if (isSos) Color(0xFFEF4444).copy(alpha = 0.5f) else SurfaceBorder, RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp))
                         else Modifier
                     )
                     .clickable { onInspectRoute(msg) }
@@ -286,7 +354,7 @@ fun ChatBubble(
                 Column {
                     Text(
                         text = msg.text,
-                        color = if (isMine) ObsidianBlack else TextPrimary,
+                        color = if (isMine) ObsidianBlack else if (isSos) Color(0xFFFCA5A5) else TextPrimary,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = if (isMine) FontWeight.Medium else FontWeight.Normal
                     )
@@ -351,82 +419,90 @@ fun RouteInspectorDialog(
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
                 Text(
-                    text = "\"${message.text}\"",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = PureWhite
+                    text = "Payload Content: \"${message.text.take(60)}${if (message.text.length > 60) "..." else ""}\"",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Divider(color = SurfaceBorder)
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text("CRYPTOGRAPHIC HOP TRAIL", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextSecondary, letterSpacing = 1.sp)
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (hops.isEmpty()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(SignalEmerald))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Direct Device-to-Device Transmission", style = MaterialTheme.typography.bodySmall, color = TextPrimary)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(SurfaceElevated)
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            "Direct 1-Hop Local Packet Transmission.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted
+                        )
                     }
                 } else {
-                    hops.forEachIndexed { index, hop ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 240.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(hops) { hop ->
+                            val hopTime = remember(hop.timestamp) {
+                                SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date(hop.timestamp))
+                            }
+
                             Box(
                                 modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(if (index == 0) TitaniumLight else SignalEmerald)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "${index + 1}. ${hop.nodeName}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = PureWhite
-                                )
-                                Text(
-                                    text = "Protocol: ${hop.transport} • +${hop.latencyMs}ms",
-                                    fontSize = 10.sp,
-                                    color = TextSecondary
-                                )
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(SurfaceElevated)
+                                    .padding(10.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(SignalEmerald.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = hop.nodeName.take(1).uppercase(),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = SignalEmerald
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = hop.nodeName,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = PureWhite
+                                        )
+                                        Text(
+                                            text = "${hop.transport} • $hopTime • +${hop.latencyMs}ms",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextSecondary
+                                        )
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(SurfaceElevated)
-                        .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(8.dp))
-                        .padding(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = SignalEmerald, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Hardware Keystore Verified",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = PureWhite
-                        )
                     }
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Dismiss", color = PureWhite)
+                Text("Close", color = PureWhite)
             }
         }
     )

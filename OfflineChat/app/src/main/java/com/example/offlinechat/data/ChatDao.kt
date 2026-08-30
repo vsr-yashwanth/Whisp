@@ -114,4 +114,26 @@ interface ChatDao {
 
     @Query("SELECT * FROM network_epochs ORDER BY epochNumber DESC LIMIT 1")
     suspend fun getLatestNetworkEpoch(): NetworkEpochEntity?
+
+    // Friends & Contacts Directory Operations
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFriend(friend: FriendContact)
+
+    @Query("SELECT * FROM friends ORDER BY isFavorite DESC, lastMessageTime DESC, displayName ASC")
+    fun getFriends(): Flow<List<FriendContact>>
+
+    @Query("SELECT * FROM friends WHERE username = :username LIMIT 1")
+    suspend fun getFriend(username: String): FriendContact?
+
+    @Query("SELECT * FROM friends WHERE blockchainId = :blockchainId LIMIT 1")
+    suspend fun getFriendByBlockchainId(blockchainId: String): FriendContact?
+
+    @Query("DELETE FROM friends WHERE username = :username")
+    suspend fun deleteFriend(username: String)
+
+    @Query("UPDATE friends SET lastMessageSnippet = :snippet, lastMessageTime = :time WHERE username = :username")
+    suspend fun updateFriendLastMessage(username: String, snippet: String, time: Long)
+
+    @Query("SELECT COUNT(*) FROM friends")
+    fun getFriendCount(): Flow<Int>
 }

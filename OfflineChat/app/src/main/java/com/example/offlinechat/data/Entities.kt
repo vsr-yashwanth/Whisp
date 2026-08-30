@@ -10,7 +10,10 @@ data class Conversation(
     @PrimaryKey val id: String,
     val peerId: String,
     val createdAt: Long,
-    val lastMessageAt: Long
+    val lastMessageAt: Long,
+    val conversationType: String = "GENERAL", // GENERAL, DIRECT, EMERGENCY_SOS
+    val displayName: String = id,
+    val participantBlockchainId: String = ""
 )
 
 @Entity(
@@ -32,7 +35,9 @@ data class Message(
     val encryptedPayload: String, // Stored encrypted at rest
     val timestamp: Long,
     val status: String, // PENDING, SENDING, SENT, DELIVERED, READ, FAILED
-    val hopTrace: String = "[]" // JSON serialized list of HopRecord audit trail
+    val hopTrace: String = "[]", // JSON serialized list of HopRecord audit trail
+    val senderBlockchainId: String = "",
+    val recipientBlockchainId: String = "ALL"
 )
 
 @Entity(

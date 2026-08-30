@@ -178,16 +178,34 @@ class OfflineChatApp : Application() {
                     else -> {}
                 }
 
-                // 7. Store-and-Forward / DTN Multi-hop Relay check
-                val isForMe = stampedPacket.recipientId == "ALL" || stampedPacket.recipientId == transport.localId
+                // 7. Store-and-Forward / DTN Multi-hop Relay check & Blockchain ID Addressing
+                val authPrefs = getSharedPreferences("whisp_auth_prefs", android.content.Context.MODE_PRIVATE)
+                val currentUsername = authPrefs.getString("logged_in_user", "") ?: ""
+                val currentRole = authPrefs.getString("logged_in_role", "USER") ?: "USER"
+                val myBlockchainId = if (currentUsername.isNotBlank()) com.example.offlinechat.data.UserAccount.computeBlockchainId(currentUsername) else ""
+                val isAuthority = currentRole == "SUPER_ADMIN" || currentRole == "NETWORK_ADMIN" || currentUsername.equals("admin", true) || currentUsername.equals("operator", true)
+
+                val isForMe = stampedPacket.recipientId == "ALL" ||
+                        stampedPacket.recipientBlockchainId == "ALL" ||
+                        stampedPacket.recipientId == transport.localId ||
+                        (currentUsername.isNotBlank() && stampedPacket.recipientId.equals(currentUsername, ignoreCase = true)) ||
+                        (myBlockchainId.isNotBlank() && stampedPacket.recipientBlockchainId.equals(myBlockchainId, ignoreCase = true)) ||
+                        (stampedPacket.packetType == PacketType.SOS)
+
                 if (!isForMe) {
                     if (batteryRelayPolicy.shouldRelay(stampedPacket)) {
                         // Store in DTN Custody
+                        val targetDest = if (stampedPacket.recipientBlockchainId.isNotBlank() && stampedPacket.recipientBlockchainId != "ALL") {
+                            stampedPacket.recipientBlockchainId
+                        } else {
+                            stampedPacket.recipientId
+                        }
+
                         val dtnBundle = DtnBundle(
                             bundleId = stampedPacket.packetId,
                             messageId = stampedPacket.messageId,
-                            source = stampedPacket.senderId,
-                            destination = stampedPacket.recipientId,
+                            source = stampedPacket.senderBlockchainId.ifBlank { stampedPacket.senderId },
+                            destination = targetDest,
                             creationTime = stampedPacket.timestamp,
                             expirationTime = stampedPacket.timestamp + (stampedPacket.ttl * 60_000L),
                             ttl = stampedPacket.ttl,
@@ -197,7 +215,7 @@ class OfflineChatApp : Application() {
                         )
                         dtnEngine.ingestAndStoreBundle(dtnBundle)
                         storeAndForwardManager.bufferPacket(stampedPacket)
-                        Log.d("OfflineChatApp", "Stored DTN custody bundle (${stampedPacket.packetId}) for (${stampedPacket.recipientId})")
+                        Log.d("OfflineChatApp", "Stored DTN custody bundle (${stampedPacket.packetId}) for ($targetDest)")
                     } else {
                         Log.w("OfflineChatApp", "Dropped relay packet (${stampedPacket.packetId}) due to low battery threshold")
                     }
@@ -210,19 +228,43 @@ class OfflineChatApp : Application() {
                         // Decrypt transit ciphertext
                         val transitBytes = Base64.decode(stampedPacket.payload, Base64.NO_WRAP)
                         val decryptedPlaintext = cryptoManager.decryptFromTransit(transitBytes)
+                        val plaintextString = String(decryptedPlaintext, Charsets.UTF_8)
 
                         // Encrypt with local hardware Keystore AEAD for storage at rest
                         val storagePayloadBase64 = cryptoManager.encryptForStorage(decryptedPlaintext)
 
+                        // Map conversation ID: 1-on-1 direct conversations map to the sender
+                        val targetConvId = if (stampedPacket.packetType == PacketType.SOS) {
+                            "EMERGENCY_SOS"
+                        } else if (stampedPacket.conversationId.startsWith("direct_")) {
+                            "direct_${stampedPacket.senderId}"
+                        } else {
+                            stampedPacket.conversationId
+                        }
+
+                        val convType = if (stampedPacket.packetType == PacketType.SOS) "EMERGENCY_SOS" else if (targetConvId.startsWith("direct_")) "DIRECT" else "GENERAL"
+
                         // Insert Conversation (Foreign Key)
                         database.chatDao().insertConversation(
                             Conversation(
-                                id = stampedPacket.conversationId,
+                                id = targetConvId,
                                 peerId = stampedPacket.senderId,
                                 createdAt = stampedPacket.timestamp,
-                                lastMessageAt = stampedPacket.timestamp
+                                lastMessageAt = stampedPacket.timestamp,
+                                conversationType = convType,
+                                displayName = if (convType == "DIRECT") stampedPacket.senderId else targetConvId,
+                                participantBlockchainId = stampedPacket.senderBlockchainId
                             )
                         )
+
+                        // Update Friend snippet if this is a direct message from a friend
+                        if (convType == "DIRECT") {
+                            database.chatDao().updateFriendLastMessage(
+                                username = stampedPacket.senderId,
+                                snippet = plaintextString,
+                                time = stampedPacket.timestamp
+                            )
+                        }
 
                         // Serialize hops
                         val hopsJsonArr = JSONArray()
@@ -239,15 +281,17 @@ class OfflineChatApp : Application() {
                         // Insert Message into SQLite DB
                         val dbMsg = Message(
                             id = stampedPacket.messageId,
-                            conversationId = stampedPacket.conversationId,
+                            conversationId = targetConvId,
                             senderId = stampedPacket.senderId,
                             encryptedPayload = storagePayloadBase64,
                             timestamp = stampedPacket.timestamp,
                             status = "RECEIVED",
-                            hopTrace = hopsJsonArr.toString()
+                            hopTrace = hopsJsonArr.toString(),
+                            senderBlockchainId = stampedPacket.senderBlockchainId,
+                            recipientBlockchainId = stampedPacket.recipientBlockchainId
                         )
                         database.chatDao().insertMessage(dbMsg)
-                        Log.d("OfflineChatApp", "PERSISTED PACKET (${stampedPacket.messageId}) in (${stampedPacket.conversationId}): $decryptedPlaintext")
+                        Log.d("OfflineChatApp", "PERSISTED PACKET (${stampedPacket.messageId}) in ($targetConvId): $decryptedPlaintext")
                     }
                     else -> {}
                 }

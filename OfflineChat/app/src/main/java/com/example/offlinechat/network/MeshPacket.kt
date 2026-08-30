@@ -40,6 +40,8 @@ data class MeshPacket(
     val conversationId: String = "General Chat",
     val senderId: String,
     val recipientId: String = "ALL", // "ALL" for broadcast or target Node ID
+    val senderBlockchainId: String = "",
+    val recipientBlockchainId: String = "ALL", // "ALL" or target 0x... Blockchain ID
     val timestamp: Long = System.currentTimeMillis(),
     val ttl: Int = 10,               // Time-To-Live hop limit
     val hopCount: Int = 0,
@@ -56,7 +58,7 @@ data class MeshPacket(
 
     fun computeSigningPayload(): ByteArray {
         val actualHash = computeHash(payload)
-        val canonical = "$protocolVersion|$packetId|$messageId|$senderId|$recipientId|$timestamp|$ttl|$priority|$actualHash"
+        val canonical = "$protocolVersion|$packetId|$messageId|$senderId|$recipientId|$senderBlockchainId|$recipientBlockchainId|$timestamp|$ttl|$priority|$actualHash"
         return canonical.toByteArray(Charsets.UTF_8)
     }
 
@@ -69,6 +71,8 @@ data class MeshPacket(
             put("conversationId", conversationId)
             put("senderId", senderId)
             put("recipientId", recipientId)
+            put("senderBlockchainId", senderBlockchainId)
+            put("recipientBlockchainId", recipientBlockchainId)
             put("timestamp", timestamp)
             put("ttl", ttl)
             put("hopCount", hopCount)
@@ -189,6 +193,8 @@ data class MeshPacket(
                     conversationId = obj.optString("conversationId", "General Chat"),
                     senderId = obj.optString("senderId", obj.optString("sender", "UnknownNode")),
                     recipientId = obj.optString("recipientId", "ALL"),
+                    senderBlockchainId = obj.optString("senderBlockchainId", ""),
+                    recipientBlockchainId = obj.optString("recipientBlockchainId", obj.optString("recipientId", "ALL")),
                     timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
                     ttl = obj.optInt("ttl", 10),
                     hopCount = obj.optInt("hopCount", hopsList.size),

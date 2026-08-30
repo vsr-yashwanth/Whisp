@@ -138,6 +138,10 @@ class ChatViewModel(
                 val msgId = UUID.randomUUID().toString()
                 val timestamp = System.currentTimeMillis()
                 
+                val isSos = isEmergency || currentConversationId == "EMERGENCY_SOS"
+                val isDirect = currentConversationId.startsWith("direct_")
+                val targetUser = if (isDirect) currentConversationId.removePrefix("direct_") else ""
+
                 // 1. Encrypt for local storage at rest (Android Keystore AES-256-GCM)
                 val storagePayloadBase64 = cryptoManager.encryptForStorage(text.toByteArray())
                 
@@ -153,15 +157,24 @@ class ChatViewModel(
                     latencyMs = 0L
                 )
 
+                val convType = if (isSos) "EMERGENCY_SOS" else if (isDirect) "DIRECT" else "GENERAL"
+
                 // Ensure parent conversation exists
                 chatDao.insertConversation(
                     Conversation(
                         id = currentConversationId,
-                        peerId = currentConversationId,
+                        peerId = if (isDirect) targetUser else currentConversationId,
                         createdAt = timestamp,
-                        lastMessageAt = timestamp
+                        lastMessageAt = timestamp,
+                        conversationType = convType,
+                        displayName = if (isDirect) targetUser else if (isSos) "Emergency SOS Authorities" else currentConversationId,
+                        participantBlockchainId = if (isDirect) com.example.offlinechat.data.UserAccount.computeBlockchainId(targetUser) else ""
                     )
                 )
+
+                if (isDirect) {
+                    chatDao.updateFriendLastMessage(targetUser, text, timestamp)
+                }
 
                 // 3. Save to local SQLite Room DB with initial hop
                 val hopsArray = JSONArray().apply {
@@ -174,29 +187,38 @@ class ChatViewModel(
                     })
                 }
 
+                val senderId = "me"
+                val localNodeId = (transport as? com.example.offlinechat.network.HybridMeshTransport)?.localId ?: "Node-${Build.MODEL.replace(" ", "")}"
+                val senderBlockchainId = com.example.offlinechat.data.UserAccount.computeBlockchainId(localNodeId)
+                val recipientBlockchainId = if (isDirect) com.example.offlinechat.data.UserAccount.computeBlockchainId(targetUser) else "ALL"
+
                 val dbMsg = Message(
                     id = msgId,
                     conversationId = currentConversationId,
-                    senderId = "me",
+                    senderId = senderId,
                     encryptedPayload = storagePayloadBase64,
                     timestamp = timestamp,
                     status = "SENT",
-                    hopTrace = hopsArray.toString()
+                    hopTrace = hopsArray.toString(),
+                    senderBlockchainId = senderBlockchainId,
+                    recipientBlockchainId = recipientBlockchainId
                 )
                 chatDao.insertMessage(dbMsg)
 
                 // 4. Construct versioned MeshPacket protocol instance
                 val packet = MeshPacket(
                     protocolVersion = 4,
-                    packetType = if (isEmergency) PacketType.SOS else PacketType.MESSAGE,
+                    packetType = if (isSos) PacketType.SOS else PacketType.MESSAGE,
                     packetId = UUID.randomUUID().toString(),
                     messageId = msgId,
                     conversationId = currentConversationId,
-                    senderId = "User-${Build.MODEL.take(6)}",
-                    recipientId = if (currentConversationId.startsWith("Node-") || currentConversationId.startsWith("User-")) currentConversationId else "ALL",
+                    senderId = localNodeId,
+                    recipientId = if (isSos) "AUTHORITY_BROADCAST" else if (isDirect) targetUser else if (currentConversationId.startsWith("Node-") || currentConversationId.startsWith("User-")) currentConversationId else "ALL",
+                    senderBlockchainId = senderBlockchainId,
+                    recipientBlockchainId = recipientBlockchainId,
                     timestamp = timestamp,
                     ttl = 10,
-                    priority = if (isEmergency) PacketPriority.SOS else PacketPriority.NORMAL,
+                    priority = if (isSos) PacketPriority.SOS else PacketPriority.NORMAL,
                     payload = transitPayloadBase64,
                     hops = listOf(initialHop)
                 )
