@@ -8,6 +8,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -118,7 +123,21 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        composable("home") {
+                        composable(
+                            route = "home",
+                            exitTransition = {
+                                slideOutHorizontally(
+                                    targetOffsetX = { it },
+                                    animationSpec = tween(350)
+                                )
+                            },
+                            popEnterTransition = {
+                                slideInHorizontally(
+                                    initialOffsetX = { it },
+                                    animationSpec = tween(350)
+                                )
+                            }
+                        ) {
                             HomeScreen(
                                 discoveredPeers = discoveredPeers,
                                 connectionState = connectionState,
@@ -142,7 +161,33 @@ class MainActivity : ComponentActivity() {
                                 onLogout = handleLogout
                             )
                         }
-                        composable("chat/{peerId}") { backStackEntry ->
+                        composable(
+                            route = "chat/{peerId}",
+                            enterTransition = {
+                                slideInHorizontally(
+                                    initialOffsetX = { -it },
+                                    animationSpec = tween(350)
+                                ) + fadeIn(animationSpec = tween(350))
+                            },
+                            exitTransition = {
+                                slideOutHorizontally(
+                                    targetOffsetX = { -it },
+                                    animationSpec = tween(350)
+                                ) + fadeOut(animationSpec = tween(350))
+                            },
+                            popEnterTransition = {
+                                slideInHorizontally(
+                                    initialOffsetX = { -it },
+                                    animationSpec = tween(350)
+                                ) + fadeIn(animationSpec = tween(350))
+                            },
+                            popExitTransition = {
+                                slideOutHorizontally(
+                                    targetOffsetX = { -it },
+                                    animationSpec = tween(350)
+                                ) + fadeOut(animationSpec = tween(350))
+                            }
+                        ) { backStackEntry ->
                             val peerId = backStackEntry.arguments?.getString("peerId") ?: "General Chat"
                             
                             val chatViewModel: ChatViewModel = viewModel(
