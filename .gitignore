@@ -25,8 +25,13 @@ OfflineChat/app/build/
 *.apk
 *.aab
 
-# IDE files
+# IDE and config files
 .idea/
 *.iml
 .DS_Store
 local.properties
+**/local.properties
+OfflineChat/local.properties
+*.log
+**/crash.log
+

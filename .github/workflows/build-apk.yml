@@ -25,6 +25,9 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Clean Environment
+        run: rm -f OfflineChat/local.properties
+
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
         working-directory: OfflineChat
@@ -45,19 +48,23 @@ jobs:
         with:
           name: Whisp ${{ github.ref_name }}
           body: |
-            ## 🛰️ Whisp v4.0 — High-Assurance Zero-Trust Distributed Mesh & Admin Control Plane
+            ## 🛰️ Whisp ${{ github.ref_name }} — Distributed Offline Mesh & Admin Control Plane
 
-            ### 🚀 What's New in v4.0:
-            - **🔐 Local MongoDB Authentication**: Full multi-tier user and operator authentication backed by local MongoDB database.
-            - **🌐 Web Admin Control Plane**: Live network health scoring, 2D topology radar, and DTN custody tracking.
+            ### 🚀 Highlights & Features:
+            - **👥 Dynamic User Registration & Login**: Users can create new accounts directly from the app or web control plane and log in dynamically.
+            - **🔒 Protected Admin Gate**: The Admin Control Screen is secured with master authentication (`whispadmin123` / `operator123` / dynamic admin credentials).
+            - **👥 Account Management UI**: Admins can inspect, create, suspend, and delete accounts from mobile and web dashboards.
+            - **🔐 Local MongoDB Authentication**: Multi-tier user and operator authentication backed by local MongoDB.
+            - **🌐 Web Admin Control Plane**: Live health score, 2D topology radar, and DTN custody tracking.
             - **🛡️ Zero-Trust Security & Envelope Signatures**: Ed25519 cryptographic signatures and token-bucket DoS defense.
             - **📬 Delay-Tolerant Networking (DTN)**: 500 MB bounded storage with multi-factor custody eviction.
-            - **🧪 Chaos Simulation Lab**: In-browser execution of discrete mesh benchmarks with reproducible random seeds.
+            - **🧪 Chaos Simulation Lab**: In-browser execution of discrete mesh benchmarks with reproducible seeds.
             - **📝 Offline CRDT Collaboration**: Collaborative checklists with deterministic Last-Write-Wins merging.
 
             ### 📲 Installation:
-            Download `app-debug.apk` below and install on any Android 14+ device.
+            Download `app-debug.apk` attached below and install on Android 14+ devices.
           files: |
             OfflineChat/app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
