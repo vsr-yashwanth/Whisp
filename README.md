@@ -1,132 +1,107 @@
-# 🛰️ Whisp — High-Assurance Zero-Trust Distributed Mesh Platform & Admin Control Plane
+# 🛰️ Whisp — Off-Grid Peer-to-Peer Mesh & SOS Platform
 
 <div align="center">
 
-[![Download APK](https://img.shields.io/badge/Download-Latest%20APK%20(v4.0)-white?style=for-the-badge&logo=android)](https://github.com/vsr-yashwanth/Whisp/releases)
-[![Android](https://img.shields.io/badge/Platform-Android%2014%2B-black?style=for-the-badge&logo=android)](https://www.android.com)
+[![Download APK](https://img.shields.io/badge/Download-Latest%20APK%20(v4.2.2)-emerald?style=for-the-badge&logo=android)](https://github.com/vsr-yashwanth/Whisp/releases)
+[![Platform](https://img.shields.io/badge/Platform-Android%2014%2B-black?style=for-the-badge&logo=android)](https://www.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-black?style=for-the-badge&logo=kotlin)](https://kotlinlang.org)
-[![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-black?style=for-the-badge&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
-[![MongoDB](https://img.shields.io/badge/Database-MongoDB%20Local-green?style=for-the-badge&logo=mongodb)](https://www.mongodb.com)
-[![Admin Web](https://img.shields.io/badge/Admin%20Web-Control%20Plane%20v4-black?style=for-the-badge&logo=html5)](https://github.com/vsr-yashwanth/Whisp/tree/v4)
-[![Branch v4](https://img.shields.io/badge/Source%20Code-Branch%20v4%20(Latest)-white?style=for-the-badge&logo=git)](https://github.com/vsr-yashwanth/Whisp/tree/v4)
+[![UI](https://img.shields.io/badge/UI-Jetpack%20Compose-black?style=for-the-badge&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
+[![Branch v4](https://img.shields.io/badge/Code-Branch%20v4%20(Latest)-white?style=for-the-badge&logo=git)](https://github.com/vsr-yashwanth/Whisp/tree/v4)
 
-**Whisp** is a zero-trust, delay-tolerant, decentralized mesh networking platform engineered for mission-critical peer-to-peer communication, state replication, and distributed apps operating across intermittently connected devices without cellular networks, ISPs, or central servers.
+**Whisp** turns standard Android phones into an encrypted, off-grid communication network. When cell towers go down, power outages hit, or you're traveling off the grid, Whisp keeps people connected directly device-to-device using Bluetooth Low Energy and Wi-Fi Direct.
 
-[📥 Download APK](#-direct-apk-installation-recommended) • [Source Code (v4 Branch)](https://github.com/vsr-yashwanth/Whisp/tree/v4) • [Admin Control Plane](#-web-based-admin-control-plane) • [🔐 Authentication & MongoDB](#-authentication--pre-injected-mongodb-credentials) • [Security Invariants](#-zero-trust-security-invariants)
+[📲 Get the App](#-quick-install-android) • [✨ What's New](#-core-features) • [🌐 Admin Dashboard](#-web-control-plane) • [🛡️ Security](#-zero-trust-security) • [💻 Source Code](https://github.com/vsr-yashwanth/Whisp/tree/v4)
 
 </div>
 
 ---
 
-## ⚡ Conceptual Workflow
+## 💡 Why Whisp?
+
+In natural disasters, remote hikes, or network blackouts, conventional messaging apps stop working the second you lose internet connectivity. 
+
+Whisp creates a **living peer-to-peer mesh**:
+- **No Internet Required**: Messages hop autonomously through intermediate phones to reach the recipient.
+- **Store & Forward (DTN)**: If a recipient is offline or out of range, nearby devices carry the encrypted packet until they cross paths.
+- **Zero-Trust & Private**: Everything is end-to-end encrypted with hardware Keystore keys. Intermediate relay nodes can never read your messages.
 
 ```mermaid
-graph TD
-    A["📱 Node A (Origin)"] -->|"Compute Canonical Payload"| B["🔏 Ed25519 Envelope Signature"]
-    B --> C{"Can I reach D directly?"}
-    C -- "YES" --> D["🧭 Predictive Multi-Factor Route"]
-    C -- "NO" --> E["📬 DTN Mode (Store & Forward Custody)"]
-    E --> F["👥 Encounter Prediction (EWMA & ICT)"]
-    D --> G["🏃 Mobility-Aware Opportunistic Relay"]
-    F --> G
-    G --> H{"Hostile / Untrusted Relay?"}
-    H -- "Tampered / Forged" --> I["🛑 Fail-Closed Drop (Invariant 002)"]
-    H -- "Spam / Flood" --> J["🛡️ Token-Bucket Rate Limiter"]
-    H -- "Valid Signature" --> K["🚀 Direct / Multi-Hop Delivery"]
-    K --> L["✅ State Merged & Delivered (CRDT / E2EE)"]
-    
-    subgraph ControlPlane["Zero-Trust Admin Control Plane"]
-        M["📊 Web Dashboard & Radar"]
-        N["🌐 Interactive 2D Topology Graph"]
-        O["🧪 Discrete Chaos Simulation Engine"]
-        P["📜 Tamper-Resistant Audit Logs"]
-    end
-    D -.-> M
-    E -.-> M
-    J -.-> P
+graph LR
+    A["📱 You (Alice)"] -->|"Direct BLE Hop"| B["📱 Neighbor (Relay)"]
+    B -->|"Physical Movement"| C["📱 Courier Node"]
+    C -->|"Delivered"| D["📱 Friend (Bob)"]
+    A -.->|"🚨 Priority SOS"| E["🚒 Local Authority Node"]
 ```
 
 ---
 
-## 🔐 Authentication & Pre-Injected MongoDB Credentials
+## ✨ Core Features
 
-Whisp stores and authenticates users and operators directly against your local computer's **MongoDB database** (`mongodb://localhost:27017/whisp_db`):
+### ⛓️ Unique Decentralized Blockchain IDs
+Every user gets a permanent cryptographic address (`0x...`). Messages are tagged to this blockchain ID so delay-tolerant nodes can hold and route packets specifically to you, even if your phone was completely offline when the message was sent.
 
-| Scope | Username | Password | Role | Permissions |
-| :--- | :--- | :--- | :--- | :--- |
-| **Admin Control Plane Web** | `admin` | `whispadmin123` | `SUPER_ADMIN` | Full control plane, chaos simulator, node isolation, audit logs |
-| **Admin Control Plane Web** | `operator` | `operator123` | `NETWORK_ADMIN` | Topology, node management, routing inspector |
-| **Android App User** | `yashwanth` | `password123` | `USER` | P2P encrypted messaging, DTN custody, offline notes |
-| **Android App User** | `user` | `whisp123` | `USER` | P2P encrypted messaging, DTN custody, offline notes |
+### 👥 1-on-1 Friends & Direct Private Chats
+Search for friends by their username or paste their `0x...` Blockchain ID. Add them to your personal directory and chat privately in isolated, end-to-end encrypted rooms with real-time hop tracing.
 
-> [!TIP]
-> Run `python init_mongodb.py` at any time to re-seed or verify pre-injected credentials in your local MongoDB instance.
+### 🚨 Emergency Authorities SOS Channel
+A dedicated, high-priority emergency channel (`Priority 100`) designed for critical moments.
+- Instant 1-tap broadcast presets: **Medical Emergency**, **Fire / Hazard**, and **Search & Rescue**.
+- **Battery-Bypass Guarantee**: Emergency SOS broadcasts are never dropped by battery conservation policies, ensuring alerts reach first-responders and local stations.
 
----
+### 🔒 Dynamic User Accounts & Protected Admin Gate
+- Create accounts and sign in with your own custom credentials.
+- Zero-trust Admin Gate: Network controls and metrics require an Administrator Master Key to prevent unauthorized access.
 
-## 📲 Direct APK Installation *(Recommended)*
-
-You can install Whisp directly on any physical Android phone without needing Android Studio or a computer:
-
-1. On your Android phone, open:  
-   👉 **[https://github.com/vsr-yashwanth/Whisp/releases](https://github.com/vsr-yashwanth/Whisp/releases)**
-2. Tap on the latest release and download **`app-debug.apk`**.
-3. Tap **Open** / **Install** *(if prompted by Android, tap "Allow installation from unknown sources")*.
-4. Launch **Whisp**, login with `yashwanth / password123`, and communicate securely off-grid!
+### 📝 Offline Collaborative Notes (CRDT)
+Share and update checklists and survival plans with nearby peers without internet using conflict-free replicated data types.
 
 ---
 
-## 🌐 Web-Based Admin Control Plane
+## 📲 Quick Install (Android)
 
-The **Whisp Admin Control Plane** provides network operators, administrators, and security researchers with real-time operational control without compromising the Zero-Trust privacy guarantee:
+You don't need Android Studio or a computer to use Whisp:
 
-- **🔐 Admin Authentication Gate**: Secure password authentication against local MongoDB with quick-credential selectors.
-- **📊 Network Overview & Health Score**: Multi-factor scoring (0–100) calculated live from availability, DTN quota, and partition health.
-- **🌐 Interactive 2D Topology Graph**: Full HTML5 canvas mesh visualizer with real-time radar sweep and node inspection.
-- **📱 Node Management & Quarantine**: Isolate suspicious nodes from routing and relaying with mandatory audit reason tracking.
-- **🧭 Routing Intelligence & Explainability**: Inspect active multi-hop routing paths, EWMA stability scores, and algorithmic decision rationales.
-- **📬 DTN Storage & Custody Monitor**: Live 500 MB quota tracking, stored bundle details, and replication metrics.
-- **🧩 Network Partition Split & Healing**: Monotonic epoch counter with automatic split detection and reconciliation monitoring.
-- **📝 CRDT State Monitor**: Last-Write-Wins map synchronization tracking across collaborative offline documents.
-- **🛡️ Security Center & Threat Timeline**: Live rate-limiting metrics and cryptographic security events.
-- **🧪 Chaos Simulation & Benchmark Lab**: In-browser execution of discrete mesh scenarios (`Scenario A–E`) with reproducible random seeds.
-- **📜 Tamper-Resistant Audit Logs**: Complete chronological record of administrative actions.
+1. Open **[Whisp Releases](https://github.com/vsr-yashwanth/Whisp/releases)** on your Android phone.
+2. Download **`app-debug.apk`** from the latest release.
+3. Tap **Install** *(enable "Install unknown apps" if prompted)*.
+4. Launch **Whisp**, tap **CREATE ACCOUNT**, and you're ready to communicate off-grid!
 
 ---
 
-## 🛡️ Zero-Trust Security Invariants
+## 🌐 Web Control Plane & Mesh Radar
 
-| Invariant | Security Guarantee |
+Whisp includes a lightweight browser-based control dashboard for network administrators and emergency coordinators:
+
+- **2D Mesh Radar**: Real-time canvas visualization of nearby peers, active radio hops, and signal paths.
+- **Network Health Score**: Instant calculation of mesh connectivity, DTN custody storage, and partition health.
+- **User Directory & Account Controls**: Inspect active accounts, toggle user access, and review audit logs.
+- **Chaos Lab**: Run simulated mesh network benchmarks to verify multi-hop reliability under stress.
+
+---
+
+## 🛡️ Zero-Trust Security
+
+| Principle | How Whisp Enforces It |
 | :--- | :--- |
-| **`INVARIANT-001`** | A relay node must never be able to decrypt a 1-to-1 message intended for another recipient. |
-| **`INVARIANT-002`** | A forged or tampered packet must be rejected before processing. |
-| **`INVARIANT-003`** | A previously processed packet cannot be replayed after its deduplication window. |
-| **`INVARIANT-004`** | Expired packets (TTL $\le 0$) must be dropped immediately. |
-| **`INVARIANT-005`** | Malformed or fuzzed packets must never crash the application or cause memory leaks. |
-| **`INVARIANT-006`** | Private identity keys must remain in hardware Keystore and never be exported. |
-| **`INVARIANT-007`** | Compromise of an ephemeral session key must not expose past message history. |
-| **`INVARIANT-008`** | An unauthenticated node cannot impersonate another node's cryptographic identity. |
-| **`INVARIANT-009`** | Routing headers cannot silently alter authenticated payloads. |
-| **`INVARIANT-010`** | Delivery acknowledgments must be cryptographically signed by the final recipient. |
-| **`INVARIANT-011`** | Storage quotas (500 MB) cannot be exceeded via packet flooding. |
-| **`INVARIANT-012`** | Deleting local conversations must leave zero accessible plaintext copies. |
-| **`INVARIANT-013`** | A compromised peer must not compromise unrelated network components. |
-| **`INVARIANT-014`** | Security-critical operations must fail closed. |
-| **`INVARIANT-015`** | Experimental features cannot weaken the security of normal messaging. |
+| **End-to-End Privacy** | Relay nodes only carry encrypted ciphertexts (`AES-256-GCM`). Relays cannot read your payload. |
+| **Tamper Resistance** | Every packet is sealed with an `Ed25519` cryptographic signature. Modified packets are discarded immediately. |
+| **Anti-Spam & Flooding** | Token-bucket rate limiters prevent rogue nodes from congesting radio channels. |
+| **Hardware Key Storage** | Identity keys are kept in the Android hardware Keystore and never leave your device. |
 
 ---
 
-## 📦 Branches
+## 📂 Repository Branches
 
-- **[`main` Branch](https://github.com/vsr-yashwanth/Whisp/tree/main)**: Documentation & APK releases.
-- **[`v4` Branch (Latest Security & Admin Platform)](https://github.com/vsr-yashwanth/Whisp/tree/v4)**: Complete Whisp Security V4, Admin Control Plane, and MongoDB Auth Platform.
-- **[`v3` Branch](https://github.com/vsr-yashwanth/Whisp/tree/v3)**: Whisp V3 Delay-Tolerant Mesh codebase.
-- **[`v2` Branch](https://github.com/vsr-yashwanth/Whisp/tree/v2)**: Whisp V2 Adaptive Mesh codebase.
-- **[`V1` Branch](https://github.com/vsr-yashwanth/Whisp/tree/V1)**: Original Whisp V1 codebase.
+- **[`main`](https://github.com/vsr-yashwanth/Whisp/tree/main)**: Project documentation and official release hub.
+- **[`v4`](https://github.com/vsr-yashwanth/Whisp/tree/v4)** *(Active)*: Latest release with Blockchain IDs, 1-on-1 Friends Chat, Emergency SOS Channel, and Web Control Plane.
+- **[`v3`](https://github.com/vsr-yashwanth/Whisp/tree/v3)**: Delay-Tolerant Networking (DTN) and predictive routing core.
+- **[`v2`](https://github.com/vsr-yashwanth/Whisp/tree/v2)**: Adaptive mesh networking foundation.
 
 ---
 
-## 📄 License & Attribution
+<div align="center">
 
-Developed by **[vsr-yashwanth](https://github.com/vsr-yashwanth)**.  
-Built for resilient, decentralized communication anywhere on Earth.
+Crafted with ❤️ by **[vsr-yashwanth](https://github.com/vsr-yashwanth)**  
+*Keeping people connected when it matters most.*
+
+</div>
