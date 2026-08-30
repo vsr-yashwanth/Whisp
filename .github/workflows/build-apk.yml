@@ -50,15 +50,16 @@ jobs:
           body: |
             ## 🛰️ Whisp ${{ github.ref_name }} — Distributed Offline Mesh & Admin Control Plane
 
-            ### 🚀 Highlights & Features:
+            ### 🚀 Highlights & Features in v4.2.0:
+            - **⛓️ Unique Blockchain IDs (`0x...`)**: Deterministic decentralized identity addresses for every user to enable offline delay-tolerant routing over physical mesh hops.
+            - **👥 Search & Add Friends (1-on-1 Direct Chats)**: Search users by username or Blockchain ID and chat privately in isolated encrypted 1-on-1 rooms instead of global broadcast.
+            - **🚨 Dedicated Emergency Authorities SOS Channel**: Priority 100 emergency broadcast channel guaranteed to bypass battery throttling and route to local response authorities.
+            - **✨ UI / UX Overhaul**: Modern channel switcher (Direct Chats, General Mesh, Radio Peers), contact cards, and real-time route tracing.
             - **👥 Dynamic User Registration & Login**: Users can create new accounts directly from the app or web control plane and log in dynamically.
             - **🔒 Protected Admin Gate**: The Admin Control Screen is secured with master authentication (`whispadmin123` / `operator123` / dynamic admin credentials).
-            - **👥 Account Management UI**: Admins can inspect, create, suspend, and delete accounts from mobile and web dashboards.
-            - **🔐 Local MongoDB Authentication**: Multi-tier user and operator authentication backed by local MongoDB.
             - **🌐 Web Admin Control Plane**: Live health score, 2D topology radar, and DTN custody tracking.
             - **🛡️ Zero-Trust Security & Envelope Signatures**: Ed25519 cryptographic signatures and token-bucket DoS defense.
             - **📬 Delay-Tolerant Networking (DTN)**: 500 MB bounded storage with multi-factor custody eviction.
-            - **🧪 Chaos Simulation Lab**: In-browser execution of discrete mesh benchmarks with reproducible seeds.
             - **📝 Offline CRDT Collaboration**: Collaborative checklists with deterministic Last-Write-Wins merging.
 
             ### 📲 Installation:
