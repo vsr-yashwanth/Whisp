@@ -53,8 +53,49 @@ class MeshRelayHandler(http.server.BaseHTTPRequestHandler):
         content_length = int(self.headers.get("Content-Length", 0))
         body_bytes = self.rfile.read(content_length)
         
-        # 1. USER LOGIN ENDPOINT
-        if self.path == "/api/auth/login":
+        # 1. USER REGISTRATION ENDPOINT
+        if self.path == "/api/auth/register":
+            try:
+                data = json.loads(body_bytes.decode())
+                username = data.get("username", "").strip()
+                password = data.get("password", "").strip()
+                role = data.get("role", "USER").strip()
+
+                if len(username) < 3 or len(password) < 4:
+                    self._set_json_headers(400)
+                    self.wfile.write(json.dumps({"success": False, "error": "Invalid username or password format"}).encode())
+                    return
+
+                if users_col is not None:
+                    existing = users_col.find_one({"username": username})
+                    if existing:
+                        self._set_json_headers(400)
+                        self.wfile.write(json.dumps({"success": False, "error": f"Username '{username}' already exists"}).encode())
+                        return
+
+                    new_doc = {
+                        "username": username,
+                        "password": password,
+                        "role": role,
+                        "status": "ACTIVE",
+                        "createdAt": int(time.time() * 1000)
+                    }
+                    users_col.insert_one(new_doc)
+                    print(f"[AUTH REGISTER] New user '{username}' registered in MongoDB")
+
+                self._set_json_headers(200)
+                self.wfile.write(json.dumps({
+                    "success": True,
+                    "username": username,
+                    "role": role,
+                    "token": f"whisp_usr_{int(time.time())}_{username}"
+                }).encode())
+            except Exception as e:
+                self._set_json_headers(500)
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode())
+
+        # 2. USER LOGIN ENDPOINT
+        elif self.path == "/api/auth/login":
             try:
                 data = json.loads(body_bytes.decode())
                 username = data.get("username", "").strip()
@@ -63,6 +104,11 @@ class MeshRelayHandler(http.server.BaseHTTPRequestHandler):
                 if users_col is not None:
                     user = users_col.find_one({"username": username, "password": password})
                     if user:
+                        if user.get("status") == "SUSPENDED":
+                            self._set_json_headers(403)
+                            self.wfile.write(json.dumps({"success": False, "error": "Account suspended by administrator"}).encode())
+                            return
+
                         self._set_json_headers(200)
                         self.wfile.write(json.dumps({
                             "success": True,
@@ -74,7 +120,7 @@ class MeshRelayHandler(http.server.BaseHTTPRequestHandler):
                         return
 
                 # Local fallback check if MongoDB is unreachable
-                if (username == "yashwanth" and password == "password123") or (username == "user" and password == "whisp123"):
+                if (username == "yashwanth" and password == "password123") or (username == "user" and password == "whisp123") or (username == "alice" and password == "alice123") or (username == "bob" and password == "bob123"):
                     self._set_json_headers(200)
                     self.wfile.write(json.dumps({
                         "success": True,
@@ -90,7 +136,7 @@ class MeshRelayHandler(http.server.BaseHTTPRequestHandler):
                 self._set_json_headers(500)
                 self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode())
 
-        # 2. ADMIN LOGIN ENDPOINT
+        # 3. ADMIN LOGIN ENDPOINT
         elif self.path == "/api/auth/admin-login":
             try:
                 data = json.loads(body_bytes.decode())
@@ -111,13 +157,13 @@ class MeshRelayHandler(http.server.BaseHTTPRequestHandler):
                         return
 
                 # Local fallback check
-                if username == "admin" and password == "whispadmin123":
+                if (username == "admin" and password == "whispadmin123") or (username == "operator" and password == "operator123"):
                     self._set_json_headers(200)
                     self.wfile.write(json.dumps({
                         "success": True,
                         "username": username,
-                        "role": "SUPER_ADMIN",
-                        "token": f"whisp_adm_{int(time.time())}_admin"
+                        "role": "SUPER_ADMIN" if username == "admin" else "NETWORK_ADMIN",
+                        "token": f"whisp_adm_{int(time.time())}_{username}"
                     }).encode())
                     return
 

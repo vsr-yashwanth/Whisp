@@ -21,6 +21,7 @@ import io.ktor.server.request.path
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -146,7 +147,8 @@ data class AdminSimulationResponse(
 @Serializable
 data class LoginRequest(
     val username: String = "",
-    val password: String = ""
+    val password: String = "",
+    val role: String = "USER"
 )
 
 @Serializable
@@ -156,6 +158,21 @@ data class LoginResponse(
     val role: String = "USER",
     val token: String = "",
     val error: String? = null
+)
+
+@Serializable
+data class UserAccountDto(
+    val username: String,
+    val role: String = "USER",
+    val status: String = "ACTIVE",
+    val createdAt: Long = 0L
+)
+
+@Serializable
+data class CreateUserRequest(
+    val username: String = "",
+    val password: String = "",
+    val role: String = "USER"
 )
 
 @Serializable
@@ -193,20 +210,54 @@ class WebServerManager(
 
                 routing {
                     // ==========================================
-                    // 0. AUTHENTICATION ENDPOINTS (MONGODB SYNC)
+                    // 0. AUTHENTICATION & USER MANAGEMENT ENDPOINTS
                     // ==========================================
+                    val userManager = com.example.offlinechat.data.UserManager.getInstance(this@WebServerManager.context)
+
+                    post("/api/v1/auth/register") {
+                        val req = try { call.receive<CreateUserRequest>() } catch (e: Exception) { CreateUserRequest() }
+                        val u = req.username.trim()
+                        val p = req.password.trim()
+                        val r = req.role.ifBlank { "USER" }
+
+                        val (ok, msg) = userManager.registerAccount(u, p, r)
+                        if (ok) {
+                            auditManager.logAction("USER_REGISTER_SUCCESS", u, "SUCCESS", "Role: $r")
+                            call.respond(
+                                LoginResponse(
+                                    success = true,
+                                    username = u,
+                                    role = r,
+                                    token = "whisp_usr_${System.currentTimeMillis()}_$u"
+                                )
+                            )
+                        } else {
+                            auditManager.logAction("USER_REGISTER_FAILED", u, "FAILURE", msg)
+                            call.respond(
+                                HttpStatusCode.BadRequest,
+                                LoginResponse(success = false, error = msg)
+                            )
+                        }
+                    }
+
                     post("/api/v1/auth/admin-login") {
                         val req = try { call.receive<LoginRequest>() } catch (e: Exception) { LoginRequest() }
                         val u = req.username.trim()
                         val p = req.password.trim()
 
-                        if ((u == "admin" && p == "whispadmin123") || (u == "operator" && p == "operator123")) {
+                        val user = userManager.findUser(u)
+                        val isAdminUser = (user != null && (user.role == "SUPER_ADMIN" || user.role == "NETWORK_ADMIN") && user.password == p && user.status == "ACTIVE") ||
+                                (u == "admin" && p == "whispadmin123") ||
+                                (u == "operator" && p == "operator123")
+
+                        if (isAdminUser) {
+                            val role = user?.role ?: if (u == "admin") "SUPER_ADMIN" else "NETWORK_ADMIN"
                             auditManager.logAction("ADMIN_LOGIN_SUCCESS", u, "SUCCESS", "Logged in via Control Plane")
                             call.respond(
                                 LoginResponse(
                                     success = true,
                                     username = u,
-                                    role = if (u == "admin") "SUPER_ADMIN" else "NETWORK_ADMIN",
+                                    role = role,
                                     token = "whisp_adm_${System.currentTimeMillis()}_$u"
                                 )
                             )
@@ -224,6 +275,31 @@ class WebServerManager(
                         val u = req.username.trim()
                         val p = req.password.trim()
 
+                        val user = userManager.findUser(u)
+                        if (user != null) {
+                            if (user.status == "SUSPENDED") {
+                                auditManager.logAction("USER_LOGIN_BLOCKED", u, "FAILURE", "Account is suspended")
+                                call.respond(
+                                    HttpStatusCode.Forbidden,
+                                    LoginResponse(success = false, error = "Account is suspended by administrator.")
+                                )
+                                return@post
+                            }
+                            if (user.password == p) {
+                                auditManager.logAction("USER_LOGIN_SUCCESS", u, "SUCCESS", "Authenticated via App Login")
+                                call.respond(
+                                    LoginResponse(
+                                        success = true,
+                                        username = u,
+                                        role = user.role,
+                                        token = "whisp_usr_${System.currentTimeMillis()}_$u"
+                                    )
+                                )
+                                return@post
+                            }
+                        }
+
+                        // Seed fallback
                         if ((u == "yashwanth" && p == "password123") || (u == "user" && p == "whisp123") || (u == "alice" && p == "alice123") || (u == "bob" && p == "bob123")) {
                             auditManager.logAction("USER_LOGIN_SUCCESS", u, "SUCCESS", "Authenticated via App Login")
                             call.respond(
@@ -240,6 +316,56 @@ class WebServerManager(
                                 HttpStatusCode.Unauthorized,
                                 LoginResponse(success = false, error = "Invalid username or password")
                             )
+                        }
+                    }
+
+                    get("/api/v1/admin/users") {
+                        val users = userManager.getAllUsers().map {
+                            UserAccountDto(
+                                username = it.username,
+                                role = it.role,
+                                status = it.status,
+                                createdAt = it.createdAt
+                            )
+                        }
+                        call.respond(users)
+                    }
+
+                    post("/api/v1/admin/users/create") {
+                        val req = try { call.receive<CreateUserRequest>() } catch (e: Exception) { CreateUserRequest() }
+                        val u = req.username.trim()
+                        val p = req.password.trim()
+                        val r = req.role.ifBlank { "USER" }
+
+                        val (ok, msg) = userManager.registerAccount(u, p, r)
+                        if (ok) {
+                            auditManager.logAction("ADMIN_CREATE_USER", u, "SUCCESS", "Role: $r")
+                            call.respond(mapOf("success" to true, "message" to "User '$u' created successfully"))
+                        } else {
+                            call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "error" to msg))
+                        }
+                    }
+
+                    post("/api/v1/admin/users/{username}/toggle-status") {
+                        val target = call.parameters["username"] ?: ""
+                        val success = userManager.toggleUserStatus(target)
+                        if (success) {
+                            val user = userManager.findUser(target)
+                            auditManager.logAction("ADMIN_TOGGLE_STATUS", target, "SUCCESS", "Status is now ${user?.status}")
+                            call.respond(mapOf("success" to true, "status" to (user?.status ?: "UNKNOWN")))
+                        } else {
+                            call.respond(HttpStatusCode.NotFound, mapOf("success" to false, "error" to "User not found"))
+                        }
+                    }
+
+                    delete("/api/v1/admin/users/{username}") {
+                        val target = call.parameters["username"] ?: ""
+                        val success = userManager.deleteUser(target)
+                        if (success) {
+                            auditManager.logAction("ADMIN_DELETE_USER", target, "SUCCESS", "Deleted user")
+                            call.respond(mapOf("success" to true, "message" to "User '$target' deleted"))
+                        } else {
+                            call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "error" to "Cannot delete user or user not found"))
                         }
                     }
 

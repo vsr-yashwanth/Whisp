@@ -16,7 +16,10 @@ Whisp/
 
 # Gradle & Build artifacts
 .gradle/
+OfflineChat/.gradle/
+**/.gradle/
 build/
+**/build/
 OfflineChat/build/
 OfflineChat/app/build/
 *.apk

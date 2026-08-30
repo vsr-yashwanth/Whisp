@@ -2,7 +2,10 @@ package com.example.offlinechat.ui
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -13,10 +16,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -26,6 +32,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.offlinechat.data.UserManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -34,6 +41,11 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
+enum class AuthMode {
+    SIGN_IN,
+    CREATE_ACCOUNT
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthScreen(
@@ -41,12 +53,19 @@ fun AuthScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val userManager = remember { UserManager.getInstance(context) }
 
+    var authMode by remember { mutableStateOf(AuthMode.SIGN_IN) }
+
+    // Form fields
     var username by remember { mutableStateOf("yashwanth") }
     var password by remember { mutableStateOf("password123") }
+    var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
 
     val prefs = remember { context.getSharedPreferences("whisp_auth_prefs", Context.MODE_PRIVATE) }
 
@@ -58,66 +77,112 @@ fun AuthScreen(
 
         isLoading = true
         errorMessage = null
+        successMessage = null
 
         coroutineScope.launch {
-            val success = withContext(Dispatchers.IO) {
-                var authOk = false
-                val cleanUser = u.trim()
-                val cleanPass = p.trim()
+            val cleanUser = u.trim()
+            val cleanPass = p.trim()
 
-                // 1. Check local pre-injected credentials first (offline guaranteed)
-                val isLocalValid = (cleanUser == "yashwanth" && cleanPass == "password123") ||
-                        (cleanUser == "user" && cleanPass == "whisp123") ||
-                        (cleanUser == "admin" && cleanPass == "whispadmin123") ||
-                        (cleanUser == "alice" && cleanPass == "alice123") ||
-                        (cleanUser == "bob" && cleanPass == "bob123")
+            var authOk = false
+            var userRole = "USER"
 
-                if (isLocalValid) {
-                    authOk = true
+            // 1. Check local UserManager (includes pre-seeded and dynamically registered accounts)
+            val localUser = userManager.findUser(cleanUser)
+            if (localUser != null) {
+                if (localUser.status == "SUSPENDED") {
+                    isLoading = false
+                    errorMessage = "Account '$cleanUser' has been suspended by network administrator."
+                    return@launch
                 }
+                if (localUser.password == cleanPass) {
+                    authOk = true
+                    userRole = localUser.role
+                }
+            }
 
-                // 2. Also try MongoDB relay server on port 8088 if reachable
-                val targets = listOf("http://10.0.2.2:8088", "http://192.168.1.3:8088", "http://127.0.0.1:8088")
-                for (base in targets) {
-                    try {
-                        val url = URL("$base/api/auth/login")
-                        val conn = url.openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"
-                        conn.connectTimeout = 800
-                        conn.readTimeout = 800
-                        conn.doOutput = true
-                        conn.setRequestProperty("Content-Type", "application/json")
+            // 2. Also try MongoDB relay server on port 8088 if reachable
+            if (!authOk) {
+                withContext(Dispatchers.IO) {
+                    val targets = listOf("http://10.0.2.2:8088", "http://192.168.1.3:8088", "http://127.0.0.1:8088")
+                    for (base in targets) {
+                        try {
+                            val url = URL("$base/api/auth/login")
+                            val conn = url.openConnection() as HttpURLConnection
+                            conn.requestMethod = "POST"
+                            conn.connectTimeout = 800
+                            conn.readTimeout = 800
+                            conn.doOutput = true
+                            conn.setRequestProperty("Content-Type", "application/json")
 
-                        val json = JSONObject()
-                        json.put("username", cleanUser)
-                        json.put("password", cleanPass)
+                            val json = JSONObject()
+                            json.put("username", cleanUser)
+                            json.put("password", cleanPass)
 
-                        val writer = OutputStreamWriter(conn.outputStream)
-                        writer.write(json.toString())
-                        writer.flush()
-                        writer.close()
+                            val writer = OutputStreamWriter(conn.outputStream)
+                            writer.write(json.toString())
+                            writer.flush()
+                            writer.close()
 
-                        if (conn.responseCode == 200) {
-                            authOk = true
-                            break
+                            if (conn.responseCode == 200) {
+                                authOk = true
+                                break
+                            }
+                        } catch (e: Exception) {
+                            // Keep checking
                         }
-                    } catch (e: Exception) {
-                        // Keep checking
                     }
                 }
-                authOk
             }
 
             isLoading = false
-            if (success) {
+            if (authOk) {
                 prefs.edit()
-                    .putString("logged_in_user", u.trim())
+                    .putString("logged_in_user", cleanUser)
+                    .putString("logged_in_role", userRole)
                     .putBoolean("is_logged_in", true)
                     .apply()
-                Toast.makeText(context, "Welcome to Whisp, ${u.trim()}!", Toast.LENGTH_SHORT).show()
-                onLoginSuccess(u.trim())
+                Toast.makeText(context, "Welcome to Whisp, $cleanUser!", Toast.LENGTH_SHORT).show()
+                onLoginSuccess(cleanUser)
             } else {
-                errorMessage = "Invalid credentials. Please verify your MongoDB login."
+                errorMessage = "Invalid username or password. Please verify your credentials."
+            }
+        }
+    }
+
+    fun performRegister(u: String, p: String, confirmP: String) {
+        val cleanUser = u.trim()
+        val cleanPass = p.trim()
+        val cleanConfirm = confirmP.trim()
+
+        if (cleanUser.isBlank() || cleanPass.isBlank()) {
+            errorMessage = "Please fill in all fields"
+            return
+        }
+
+        if (cleanPass != cleanConfirm) {
+            errorMessage = "Passwords do not match"
+            return
+        }
+
+        isLoading = true
+        errorMessage = null
+        successMessage = null
+
+        coroutineScope.launch {
+            val (registered, msg) = userManager.registerAccount(cleanUser, cleanPass, role = "USER")
+            if (registered) {
+                // Sync with relay server in background
+                userManager.syncRegistrationToRelay(cleanUser, cleanPass, role = "USER")
+
+                isLoading = false
+                successMessage = "Account '$cleanUser' created successfully! You can now log in."
+                Toast.makeText(context, "Account created! Signing in...", Toast.LENGTH_SHORT).show()
+                
+                // Auto sign in with the new account
+                performLogin(cleanUser, cleanPass)
+            } else {
+                isLoading = false
+                errorMessage = msg
             }
         }
     }
@@ -126,7 +191,7 @@ fun AuthScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF0A0A0C))
-            .padding(24.dp),
+            .padding(20.dp),
         contentAlignment = Alignment.Center
     ) {
         Card(
@@ -182,7 +247,7 @@ fun AuthScreen(
                                 .background(Color(0xFF10B981), CircleShape)
                         )
                         Text(
-                            text = "Local MongoDB Auth (whisp_db)",
+                            text = "Zero-Trust Identity & Auth",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF10B981),
@@ -191,7 +256,62 @@ fun AuthScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                // Tab Selector: SIGN IN vs CREATE ACCOUNT
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF1B1B24))
+                        .padding(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (authMode == AuthMode.SIGN_IN) Color.White else Color.Transparent)
+                            .clickable {
+                                authMode = AuthMode.SIGN_IN
+                                errorMessage = null
+                                successMessage = null
+                            }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "SIGN IN",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (authMode == AuthMode.SIGN_IN) Color.Black else Color.Gray,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (authMode == AuthMode.CREATE_ACCOUNT) Color(0xFF10B981) else Color.Transparent)
+                            .clickable {
+                                authMode = AuthMode.CREATE_ACCOUNT
+                                errorMessage = null
+                                successMessage = null
+                                if (username == "yashwanth") username = ""
+                                if (password == "password123") password = ""
+                            }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "CREATE ACCOUNT",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (authMode == AuthMode.CREATE_ACCOUNT) Color.Black else Color.Gray,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
 
                 // Username Input
                 OutlinedTextField(
@@ -218,7 +338,7 @@ fun AuthScreen(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Password") },
+                    label = { Text(if (authMode == AuthMode.CREATE_ACCOUNT) "Choose Password (min 4 chars)" else "Password") },
                     leadingIcon = {
                         Icon(Icons.Default.Lock, contentDescription = null, tint = Color.Gray)
                     },
@@ -234,8 +354,14 @@ fun AuthScreen(
                     },
                     singleLine = true,
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { performLogin(username, password) }),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = if (authMode == AuthMode.CREATE_ACCOUNT) ImeAction.Next else ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            if (authMode == AuthMode.SIGN_IN) performLogin(username, password)
+                        }
+                    ),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color(0xFF10B981),
                         unfocusedBorderColor = Color(0xFF2A2A36),
@@ -247,47 +373,86 @@ fun AuthScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Quick Credential Chips
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF1B1B24), RoundedCornerShape(12.dp))
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "PRE-INJECTED MONGODB ACCOUNTS:",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Gray,
-                        fontFamily = FontFamily.Monospace
+                // Confirm Password (Only in CREATE ACCOUNT mode)
+                AnimatedVisibility(visible = authMode == AuthMode.CREATE_ACCOUNT) {
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = { confirmPassword = it },
+                        label = { Text("Confirm Password") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = Color.Gray)
+                        },
+                        singleLine = true,
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = { performRegister(username, password, confirmPassword) }
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF10B981),
+                            unfocusedBorderColor = Color(0xFF2A2A36),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedLabelColor = Color(0xFF10B981)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                }
+
+                // Quick Credential Chips (Only shown on Sign In)
+                if (authMode == AuthMode.SIGN_IN) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF1B1B24), RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        AssistChip(
-                            onClick = {
-                                username = "yashwanth"
-                                password = "password123"
-                            },
-                            label = { Text("yashwanth", fontSize = 11.sp) }
+                        Text(
+                            text = "PRE-CONFIGURED SEED ACCOUNTS:",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray,
+                            fontFamily = FontFamily.Monospace
                         )
-                        AssistChip(
-                            onClick = {
-                                username = "user"
-                                password = "whisp123"
-                            },
-                            label = { Text("user", fontSize = 11.sp) }
-                        )
-                        AssistChip(
-                            onClick = {
-                                username = "admin"
-                                password = "whispadmin123"
-                            },
-                            label = { Text("admin", fontSize = 11.sp) }
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            AssistChip(
+                                onClick = {
+                                    username = "yashwanth"
+                                    password = "password123"
+                                },
+                                label = { Text("yashwanth", fontSize = 11.sp) }
+                            )
+                            AssistChip(
+                                onClick = {
+                                    username = "user"
+                                    password = "whisp123"
+                                },
+                                label = { Text("user", fontSize = 11.sp) }
+                            )
+                            AssistChip(
+                                onClick = {
+                                    username = "alice"
+                                    password = "alice123"
+                                },
+                                label = { Text("alice", fontSize = 11.sp) }
+                            )
+                        }
                     }
+                }
+
+                // Success Message Banner
+                successMessage?.let { msg ->
+                    Text(
+                        text = msg,
+                        color = Color(0xFF10B981),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
 
                 // Error Message Banner
@@ -302,12 +467,21 @@ fun AuthScreen(
 
                 // Submit Button
                 Button(
-                    onClick = { performLogin(username, password) },
+                    onClick = {
+                        if (authMode == AuthMode.SIGN_IN) {
+                            performLogin(username, password)
+                        } else {
+                            performRegister(username, password, confirmPassword)
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (authMode == AuthMode.SIGN_IN) Color.White else Color(0xFF10B981),
+                        contentColor = Color.Black
+                    ),
                     enabled = !isLoading
                 ) {
                     if (isLoading) {
@@ -318,7 +492,7 @@ fun AuthScreen(
                         )
                     } else {
                         Text(
-                            text = "SIGN IN TO WHISP",
+                            text = if (authMode == AuthMode.SIGN_IN) "SIGN IN TO WHISP" else "REGISTER & SIGN IN",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp
@@ -329,3 +503,4 @@ fun AuthScreen(
         }
     }
 }
+

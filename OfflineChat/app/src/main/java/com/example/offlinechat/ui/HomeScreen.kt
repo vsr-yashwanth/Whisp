@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -17,8 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.offlinechat.data.UserManager
 import com.example.offlinechat.network.ConnectionState
 import com.example.offlinechat.network.PairingRequest
 import com.example.offlinechat.network.Peer
@@ -35,17 +40,33 @@ fun HomeScreen(
     onNavigateToChat: (String) -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAdmin: () -> Unit,
-    onNavigateToCrdtNotes: () -> Unit = {}
+    onNavigateToCrdtNotes: () -> Unit = {},
+    onLogout: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val userManager = remember { UserManager.getInstance(context) }
     val authPrefs = remember { context.getSharedPreferences("whisp_auth_prefs", android.content.Context.MODE_PRIVATE) }
     val loggedInUser = authPrefs.getString("logged_in_user", "yashwanth") ?: "yashwanth"
+    val loggedInRole = authPrefs.getString("logged_in_role", "USER") ?: "USER"
+
+    var showAdminGateDialog by remember { mutableStateOf(false) }
 
     if (pairingRequest != null) {
         PairingDialog(
             request = pairingRequest,
             onAccept = { pairingRequest.accept() },
             onReject = { pairingRequest.reject() }
+        )
+    }
+
+    if (showAdminGateDialog) {
+        AdminAuthGateDialog(
+            onDismiss = { showAdminGateDialog = false },
+            onAuthorize = {
+                showAdminGateDialog = false
+                onNavigateToAdmin()
+            },
+            userManager = userManager
         )
     }
 
@@ -74,11 +95,21 @@ fun HomeScreen(
                     IconButton(onClick = onNavigateToCrdtNotes) {
                         Icon(Icons.Rounded.Edit, contentDescription = "Shared Notes", tint = TitaniumLight, modifier = Modifier.size(20.dp))
                     }
-                    IconButton(onClick = onNavigateToAdmin) {
-                        Icon(Icons.Rounded.Share, contentDescription = "Network Grid", tint = TitaniumLight, modifier = Modifier.size(20.dp))
+                    IconButton(onClick = {
+                        // Admin is not readily accessible to normal users: Requires Admin auth
+                        if (loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN" || loggedInUser == "admin") {
+                            onNavigateToAdmin()
+                        } else {
+                            showAdminGateDialog = true
+                        }
+                    }) {
+                        Icon(Icons.Rounded.Lock, contentDescription = "Network Grid Admin", tint = TitaniumLight, modifier = Modifier.size(20.dp))
                     }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = TitaniumLight, modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = onLogout) {
+                        Icon(Icons.Rounded.ExitToApp, contentDescription = "Log Out / Switch User", tint = TitaniumLight, modifier = Modifier.size(20.dp))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -111,12 +142,28 @@ fun HomeScreen(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column {
-                                Text(
-                                    "User: $loggedInUser",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = PureWhite,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "User: $loggedInUser",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = PureWhite,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN") SignalEmerald.copy(alpha = 0.2f) else SurfaceElevated)
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = loggedInRole,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN") SignalEmerald else TextSecondary
+                                        )
+                                    }
+                                }
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     if (isGlobalActive) "MongoDB Synced • Global Relay Online" else "MongoDB Synced • Local Offline P2P",
@@ -310,3 +357,85 @@ fun HomeScreen(
         }
     }
 }
+
+@Composable
+fun AdminAuthGateDialog(
+    onDismiss: () -> Unit,
+    onAuthorize: () -> Unit,
+    userManager: UserManager
+) {
+    var adminPassword by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun checkAuth() {
+        if (userManager.verifyAdminPassword(adminPassword)) {
+            onAuthorize()
+        } else {
+            errorMessage = "Invalid Admin Master Key. Access Denied."
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceDark,
+        shape = RoundedCornerShape(18.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Lock, contentDescription = null, tint = SignalEmerald, modifier = Modifier.size(22.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                Text("Admin Control Plane", fontWeight = FontWeight.Bold, color = PureWhite, fontSize = 16.sp)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "This node is operating under Zero-Trust policy. Enter the Administrative Master Key to access network topology and controls.",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    lineHeight = 18.sp
+                )
+
+                OutlinedTextField(
+                    value = adminPassword,
+                    onValueChange = {
+                        adminPassword = it
+                        errorMessage = null
+                    },
+                    label = { Text("Admin Master Key / Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { checkAuth() }),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = SignalEmerald,
+                        unfocusedBorderColor = SurfaceBorderSubtle,
+                        focusedTextColor = PureWhite,
+                        unfocusedTextColor = PureWhite,
+                        focusedLabelColor = SignalEmerald
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                errorMessage?.let { err ->
+                    Text(err, color = Color(0xFFEF4444), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { checkAuth() },
+                colors = ButtonDefaults.buttonColors(containerColor = SignalEmerald, contentColor = ObsidianBlack),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("AUTHORIZE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+

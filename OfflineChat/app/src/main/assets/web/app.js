@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTopologyCanvas();
     initSimulationEngine();
     initEmergencyControls();
+    initUserManagement();
     initSearchFilters();
 
     // Check existing auth session
@@ -149,6 +150,7 @@ function initNavigation() {
 async function fetchAllTelemetry() {
     fetchDashboard();
     fetchNodes();
+    fetchUsers();
     fetchRoutes();
     fetchDtn();
     fetchPartitions();
@@ -635,21 +637,173 @@ function initEmergencyControls() {
 }
 
 // ==========================================
-// 8. SEARCH FILTERS & UTILS
+// 8. USER MANAGEMENT LOGIC
+// ==========================================
+let globalUsers = [];
+
+function initUserManagement() {
+    const openModalBtn = document.getElementById('open-create-user-btn');
+    const modal = document.getElementById('create-user-modal');
+    const cancelBtn = document.getElementById('create-user-cancel-btn');
+    const form = document.getElementById('create-user-form');
+    const errBox = document.getElementById('create-user-error');
+
+    if (!modal || !form) return;
+
+    openModalBtn?.addEventListener('click', () => {
+        form.reset();
+        errBox.classList.add('hidden');
+        modal.classList.remove('hidden');
+    });
+
+    cancelBtn?.addEventListener('click', () => {
+        modal.classList.add('hidden');
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('new-user-name').value.trim();
+        const password = document.getElementById('new-user-pass').value.trim();
+        const role = document.getElementById('new-user-role').value;
+        const submitBtn = document.getElementById('create-user-submit-btn');
+
+        errBox.classList.add('hidden');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'CREATING...';
+
+        try {
+            const res = await fetch('/api/v1/admin/users/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, role })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+                modal.classList.add('hidden');
+                fetchUsers();
+                fetchAudit();
+            } else {
+                errBox.textContent = data.error || 'Failed to create user account.';
+                errBox.classList.remove('hidden');
+            }
+        } catch (err) {
+            errBox.textContent = 'Error connecting to user service: ' + err.message;
+            errBox.classList.remove('hidden');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create Account';
+        }
+    });
+}
+
+async function fetchUsers() {
+    try {
+        const res = await fetch('/api/v1/admin/users');
+        if (!res.ok) return;
+        globalUsers = await res.json();
+
+        const tbody = document.getElementById('users-table-body');
+        if (!tbody) return;
+
+        if (globalUsers.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="loading-td">No user accounts found.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = globalUsers.map(user => {
+            const isRootAdmin = user.username.toLowerCase() === 'admin';
+            const isActive = user.status === 'ACTIVE';
+            const statusClass = isActive ? 'badge-emerald' : 'badge-danger';
+            const roleClass = user.role === 'SUPER_ADMIN' ? 'tag badge-secure' : user.role === 'NETWORK_ADMIN' ? 'tag' : 'tag';
+            const formattedDate = user.createdAt ? new Date(user.createdAt).toLocaleString() : 'System Seed';
+
+            return `
+                <tr>
+                    <td><strong>${escapeHtml(user.username)}</strong></td>
+                    <td><span class="${roleClass}">${escapeHtml(user.role)}</span></td>
+                    <td><span class="${statusClass}">${escapeHtml(user.status)}</span></td>
+                    <td class="font-mono">${formattedDate}</td>
+                    <td>
+                        ${!isRootAdmin ? `
+                            <button class="btn table-btn ${isActive ? 'danger-btn' : 'secondary-btn'}" onclick="toggleUserStatus('${escapeHtml(user.username)}')">
+                                ${isActive ? 'Suspend' : 'Activate'}
+                            </button>
+                            <button class="btn table-btn danger-btn" onclick="deleteUserAccount('${escapeHtml(user.username)}')">
+                                Delete
+                            </button>
+                        ` : `<span class="tag">Protected</span>`}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.warn('Users fetch error', e);
+    }
+}
+
+async function toggleUserStatus(username) {
+    try {
+        const res = await fetch(`/api/v1/admin/users/${encodeURIComponent(username)}/toggle-status`, {
+            method: 'POST'
+        });
+        if (res.ok) {
+            fetchUsers();
+            fetchAudit();
+        }
+    } catch (e) {
+        alert('Toggle user status failed: ' + e.message);
+    }
+}
+
+async function deleteUserAccount(username) {
+    if (confirm(`Are you sure you want to permanently delete account '${username}'?`)) {
+        try {
+            const res = await fetch(`/api/v1/admin/users/${encodeURIComponent(username)}`, {
+                method: 'DELETE'
+            });
+            if (res.ok) {
+                fetchUsers();
+                fetchAudit();
+            } else {
+                const data = await res.json();
+                alert(data.error || 'Failed to delete user.');
+            }
+        } catch (e) {
+            alert('Delete user failed: ' + e.message);
+        }
+    }
+}
+
+// ==========================================
+// 9. SEARCH FILTERS & UTILS
 // ==========================================
 function initSearchFilters() {
-    const search = document.getElementById('node-search');
-    if (!search) return;
-    search.addEventListener('input', () => {
-        const q = search.value.toLowerCase();
-        const rows = document.querySelectorAll('#nodes-table-body tr');
-        rows.forEach(r => {
-            r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+    const nodeSearch = document.getElementById('node-search');
+    if (nodeSearch) {
+        nodeSearch.addEventListener('input', () => {
+            const q = nodeSearch.value.toLowerCase();
+            const rows = document.querySelectorAll('#nodes-table-body tr');
+            rows.forEach(r => {
+                r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+            });
         });
-    });
+    }
+
+    const userSearch = document.getElementById('user-search');
+    if (userSearch) {
+        userSearch.addEventListener('input', () => {
+            const q = userSearch.value.toLowerCase();
+            const rows = document.querySelectorAll('#users-table-body tr');
+            rows.forEach(r => {
+                r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+            });
+        });
+    }
 }
 
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+

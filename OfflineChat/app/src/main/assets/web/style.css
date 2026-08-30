@@ -803,3 +803,22 @@ body.dark-theme {
 .hidden {
     display: none !important;
 }
+
+.table-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    margin-right: 4px;
+}
+
+.controls-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.badge-secure {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--signal-emerald);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+

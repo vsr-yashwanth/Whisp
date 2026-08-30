@@ -107,6 +107,17 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
+                        val handleLogout: () -> Unit = {
+                            authPrefs.edit()
+                                .putBoolean("is_logged_in", false)
+                                .remove("logged_in_user")
+                                .remove("logged_in_role")
+                                .apply()
+                            navController.navigate("auth") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+
                         composable("home") {
                             HomeScreen(
                                 discoveredPeers = discoveredPeers,
@@ -127,7 +138,8 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNavigateToCrdtNotes = {
                                     navController.navigate("crdt_notes")
-                                }
+                                },
+                                onLogout = handleLogout
                             )
                         }
                         composable("chat/{peerId}") { backStackEntry ->
@@ -153,7 +165,8 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("settings") {
                             SettingsScreen(
-                                onNavigateBack = { navController.popBackStack() }
+                                onNavigateBack = { navController.popBackStack() },
+                                onLogout = handleLogout
                             )
                         }
                         composable("admin") {

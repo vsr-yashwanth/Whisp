@@ -21,7 +21,8 @@ import com.example.offlinechat.ui.theme.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onLogout: () -> Unit = {}
 ) {
     val batteryRelayPolicy = remember {
         try { OfflineChatApp.instance.batteryRelayPolicy } catch (e: Exception) { null }
@@ -176,13 +177,16 @@ fun SettingsScreen(
             }
             
             Spacer(modifier = Modifier.weight(1f))
+            
             Button(
-                onClick = {},
+                onClick = onLogout,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = SurfaceElevated)
             ) {
-                Text("Wipe Local Encrypted Database", color = ErrorMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Icon(Icons.Rounded.ExitToApp, contentDescription = null, tint = PureWhite, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("LOG OUT / SWITCH ACCOUNT", color = PureWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(16.dp))
         }

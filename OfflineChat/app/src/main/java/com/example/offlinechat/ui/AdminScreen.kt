@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -23,10 +25,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.offlinechat.OfflineChatApp
 import com.example.offlinechat.data.Message
+import com.example.offlinechat.data.UserAccount
+import com.example.offlinechat.data.UserManager
 import com.example.offlinechat.network.Peer
 import com.example.offlinechat.routing.RouteCandidate
 import com.example.offlinechat.sdk.SensorTelemetryDemo
@@ -35,6 +41,7 @@ import com.example.offlinechat.simulation.ChaosConfig
 import com.example.offlinechat.simulation.SimulatedNetwork
 import com.example.offlinechat.simulation.SimulationMetrics
 import com.example.offlinechat.ui.theme.*
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -47,9 +54,16 @@ import kotlin.math.sin
 fun AdminScreen(
     onNavigateBack: () -> Unit
 ) {
-    val app = LocalContext.current.applicationContext as OfflineChatApp
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val app = context.applicationContext as OfflineChatApp
     val transport = app.transport
     val chatDao = app.database.chatDao()
+    val userManager = remember { UserManager.getInstance(context) }
+
+    var userList by remember { mutableStateOf(userManager.getAllUsers()) }
+    var showCreateUserDialog by remember { mutableStateOf(false) }
+    var deletingUser by remember { mutableStateOf<UserAccount?>(null) }
 
     val discoveredPeers by transport.discoveredPeers.collectAsState()
     val isGlobalActive by transport.isGlobalGatewayActive.collectAsState()
@@ -89,6 +103,42 @@ fun AdminScreen(
             candidate = inspectingCandidate!!,
             explanation = transport.routingEngine.explainRoute(inspectingCandidate!!),
             onDismiss = { inspectingCandidate = null }
+        )
+    }
+
+    if (showCreateUserDialog) {
+        CreateUserAccountAdminDialog(
+            onDismiss = { showCreateUserDialog = false },
+            onCreate = { u, p, r ->
+                coroutineScope.launch {
+                    val (ok, _) = userManager.registerAccount(u, p, r)
+                    if (ok) {
+                        userManager.syncRegistrationToRelay(u, p, r)
+                        userList = userManager.getAllUsers()
+                        try {
+                            app.webServerManager.auditManager.logAction("ADMIN_CREATE_USER", u, "SUCCESS", "Role: $r")
+                        } catch (e: Exception) {}
+                        showCreateUserDialog = false
+                    }
+                }
+            },
+            userManager = userManager
+        )
+    }
+
+    if (deletingUser != null) {
+        DeleteUserConfirmDialog(
+            user = deletingUser!!,
+            onDismiss = { deletingUser = null },
+            onConfirm = {
+                val target = deletingUser!!.username
+                userManager.deleteUser(target)
+                userList = userManager.getAllUsers()
+                try {
+                    app.webServerManager.auditManager.logAction("ADMIN_DELETE_USER", target, "SUCCESS", "User deleted")
+                } catch (e: Exception) {}
+                deletingUser = null
+            }
         )
     }
 
@@ -288,6 +338,50 @@ fun AdminScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("USER ACCOUNTS & ACCESS CONTROL", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextSecondary, letterSpacing = 1.sp)
+                    Button(
+                        onClick = { showCreateUserDialog = true },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SignalEmerald, contentColor = ObsidianBlack),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text("+ CREATE ACCOUNT", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            if (userList.isEmpty()) {
+                item {
+                    Text("No registered users found.", fontSize = 12.sp, color = TextSecondary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            } else {
+                items(userList) { user ->
+                    UserAccountCard(
+                        user = user,
+                        onToggleStatus = {
+                            userManager.toggleUserStatus(user.username)
+                            userList = userManager.getAllUsers()
+                            try {
+                                app.webServerManager.auditManager.logAction("TOGGLE_USER_STATUS", user.username, "SUCCESS", "Status changed to ${if (user.status == "ACTIVE") "SUSPENDED" else "ACTIVE"}")
+                            } catch (e: Exception) {}
+                        },
+                        onDelete = {
+                            deletingUser = user
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+
+            item {
                 Spacer(modifier = Modifier.height(24.dp))
                 Text("PREDICTIVE ACTIVE ROUTES", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextSecondary, letterSpacing = 1.sp)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -768,3 +862,285 @@ fun PeerDetailsDialog(peer: Peer, onDismiss: () -> Unit) {
         }
     )
 }
+
+@Composable
+fun UserAccountCard(
+    user: UserAccount,
+    onToggleStatus: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val isRootAdmin = user.username.equals("admin", ignoreCase = true)
+    val isActive = user.status == "ACTIVE"
+
+    val roleColor = when (user.role) {
+        "SUPER_ADMIN" -> SignalEmerald
+        "NETWORK_ADMIN" -> PureWhite
+        else -> TitaniumLight
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfaceDark)
+            .border(1.dp, SurfaceBorder, RoundedCornerShape(12.dp))
+            .padding(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(SurfaceElevated),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Rounded.AccountCircle,
+                        contentDescription = null,
+                        tint = if (isActive) roleColor else TextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = user.username,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isActive) PureWhite else TextMuted
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(roleColor.copy(alpha = 0.15f))
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = user.role,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = roleColor
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Status: ${user.status}",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isActive) SignalEmerald else ErrorMuted
+                    )
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!isRootAdmin) {
+                    TextButton(
+                        onClick = onToggleStatus,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = if (isActive) "SUSPEND" else "ACTIVATE",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isActive) ErrorMuted else SignalEmerald
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Delete,
+                            contentDescription = "Delete User",
+                            tint = ErrorMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(SurfaceElevated)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("PROTECTED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CreateUserAccountAdminDialog(
+    onDismiss: () -> Unit,
+    onCreate: (String, String, String) -> Unit,
+    userManager: UserManager
+) {
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var selectedRole by remember { mutableStateOf("USER") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun submit() {
+        val u = username.trim()
+        val p = password.trim()
+        if (u.length < 3) {
+            errorMessage = "Username must be at least 3 characters."
+            return
+        }
+        if (p.length < 4) {
+            errorMessage = "Password must be at least 4 characters."
+            return
+        }
+        if (userManager.findUser(u) != null) {
+            errorMessage = "Username '$u' is already in use."
+            return
+        }
+        onCreate(u, p, selectedRole)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceDark,
+        shape = RoundedCornerShape(18.dp),
+        title = {
+            Text("Create New Account", fontWeight = FontWeight.Bold, color = PureWhite, fontSize = 16.sp)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Add a new user or administrator account to local storage & sync to mesh relays.",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = {
+                        username = it
+                        errorMessage = null
+                    },
+                    label = { Text("Username") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = SignalEmerald,
+                        unfocusedBorderColor = SurfaceBorderSubtle,
+                        focusedTextColor = PureWhite,
+                        unfocusedTextColor = PureWhite,
+                        focusedLabelColor = SignalEmerald
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        errorMessage = null
+                    },
+                    label = { Text("Password (min 4 chars)") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = SignalEmerald,
+                        unfocusedBorderColor = SurfaceBorderSubtle,
+                        focusedTextColor = PureWhite,
+                        unfocusedTextColor = PureWhite,
+                        focusedLabelColor = SignalEmerald
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("Account Role:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("USER", "NETWORK_ADMIN", "SUPER_ADMIN").forEach { role ->
+                        val isSelected = selectedRole == role
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) SignalEmerald else SurfaceElevated)
+                                .clickable { selectedRole = role }
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (role == "NETWORK_ADMIN") "OPERATOR" else if (role == "SUPER_ADMIN") "ADMIN" else "USER",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) ObsidianBlack else TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                errorMessage?.let { err ->
+                    Text(err, color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { submit() },
+                colors = ButtonDefaults.buttonColors(containerColor = SignalEmerald, contentColor = ObsidianBlack),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("CREATE ACCOUNT", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+@Composable
+fun DeleteUserConfirmDialog(
+    user: UserAccount,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceDark,
+        shape = RoundedCornerShape(16.dp),
+        title = {
+            Text("Delete Account", fontWeight = FontWeight.Bold, color = PureWhite)
+        },
+        text = {
+            Text(
+                "Are you sure you want to permanently delete user '${user.username}'? This user will no longer be able to log in.",
+                fontSize = 12.sp,
+                color = TextSecondary
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = ErrorMuted, contentColor = PureWhite),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("DELETE", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+

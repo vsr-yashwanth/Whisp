@@ -70,6 +70,9 @@
                 <button class="nav-item" data-tab="nodes">
                     <span class="nav-icon">📱</span> Nodes Directory
                 </button>
+                <button class="nav-item" data-tab="users">
+                    <span class="nav-icon">👥</span> User Accounts
+                </button>
                 <button class="nav-item" data-tab="routing">
                     <span class="nav-icon">🧭</span> Routing Engine
                 </button>
@@ -457,6 +460,38 @@
                 </div>
             </section>
 
+            <!-- TAB USER ACCOUNTS -->
+            <section id="tab-users" class="tab-pane">
+                <div class="card glass">
+                    <div class="card-header">
+                        <div>
+                            <h2>User Account Registry & Access Control</h2>
+                            <p class="card-desc">Create new accounts, manage roles (User, Operator, Admin), and toggle active/suspended states.</p>
+                        </div>
+                        <div class="controls-row">
+                            <input type="text" id="user-search" class="search-input" placeholder="Search username, role..." />
+                            <button id="open-create-user-btn" class="btn primary-btn">+ CREATE ACCOUNT</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Created Time</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body">
+                                <tr><td colspan="5" class="loading-td">Querying registered user accounts...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
             <!-- TAB 11: EMERGENCY CONTROLS -->
             <section id="tab-emergency" class="tab-pane">
                 <div class="card glass danger-card">
@@ -488,6 +523,37 @@
                 <button id="modal-cancel-btn" class="btn secondary-btn">Cancel</button>
                 <button id="modal-confirm-btn" class="btn danger-btn">Confirm Action</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Create User Modal -->
+    <div id="create-user-modal" class="modal-overlay hidden">
+        <div class="modal-card glass">
+            <h3>Create User Account</h3>
+            <p class="modal-desc">Create a new local edge account with role-based access control.</p>
+            <form id="create-user-form">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="new-user-name" class="input-field" placeholder="e.g. jdoe" required minlength="3" />
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="new-user-pass" class="input-field" placeholder="Minimum 4 characters" required minlength="4" />
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select id="new-user-role" class="input-field">
+                        <option value="USER">USER (Standard Edge Node)</option>
+                        <option value="NETWORK_ADMIN">OPERATOR (Network Admin)</option>
+                        <option value="SUPER_ADMIN">SUPER_ADMIN (Full Control Plane)</option>
+                    </select>
+                </div>
+                <div id="create-user-error" class="login-error-msg hidden"></div>
+                <div class="modal-actions">
+                    <button type="button" id="create-user-cancel-btn" class="btn secondary-btn">Cancel</button>
+                    <button type="submit" id="create-user-submit-btn" class="btn primary-btn">Create Account</button>
+                </div>
+            </form>
         </div>
     </div>
 
