@@ -58,8 +58,8 @@ fun AuthScreen(
     var authMode by remember { mutableStateOf(AuthMode.SIGN_IN) }
 
     // Form fields
-    var username by remember { mutableStateOf("yashwanth") }
-    var password by remember { mutableStateOf("password123") }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
@@ -295,8 +295,6 @@ fun AuthScreen(
                                 authMode = AuthMode.CREATE_ACCOUNT
                                 errorMessage = null
                                 successMessage = null
-                                if (username == "yashwanth") username = ""
-                                if (password == "password123") password = ""
                             }
                             .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center
@@ -398,51 +396,6 @@ fun AuthScreen(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
-                }
-
-                // Quick Credential Chips (Only shown on Sign In)
-                if (authMode == AuthMode.SIGN_IN) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF1B1B24), RoundedCornerShape(12.dp))
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = "PRE-CONFIGURED SEED ACCOUNTS:",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Gray,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            AssistChip(
-                                onClick = {
-                                    username = "yashwanth"
-                                    password = "password123"
-                                },
-                                label = { Text("yashwanth", fontSize = 11.sp) }
-                            )
-                            AssistChip(
-                                onClick = {
-                                    username = "user"
-                                    password = "whisp123"
-                                },
-                                label = { Text("user", fontSize = 11.sp) }
-                            )
-                            AssistChip(
-                                onClick = {
-                                    username = "alice"
-                                    password = "alice123"
-                                },
-                                label = { Text("alice", fontSize = 11.sp) }
-                            )
-                        }
-                    }
                 }
 
                 // Success Message Banner

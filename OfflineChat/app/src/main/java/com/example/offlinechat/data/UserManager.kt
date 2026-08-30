@@ -57,11 +57,7 @@ class UserManager(private val context: Context) {
 
         val DEFAULT_ACCOUNTS = listOf(
             UserAccount("admin", "whispadmin123", role = "SUPER_ADMIN", status = "ACTIVE"),
-            UserAccount("operator", "operator123", role = "NETWORK_ADMIN", status = "ACTIVE"),
-            UserAccount("yashwanth", "password123", role = "USER", status = "ACTIVE"),
-            UserAccount("user", "whisp123", role = "USER", status = "ACTIVE"),
-            UserAccount("alice", "alice123", role = "USER", status = "ACTIVE"),
-            UserAccount("bob", "bob123", role = "USER", status = "ACTIVE")
+            UserAccount("operator", "operator123", role = "NETWORK_ADMIN", status = "ACTIVE")
         )
     }
 

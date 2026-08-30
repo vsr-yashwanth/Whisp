@@ -11,13 +11,9 @@ class AccountManagementAndAdminGateTest {
         private val users = mutableMapOf<String, UserAccount>()
 
         init {
-            // Seed defaults
+            // Seed default administrator accounts
             register("admin", "whispadmin123", "SUPER_ADMIN")
             register("operator", "operator123", "NETWORK_ADMIN")
-            register("yashwanth", "password123", "USER")
-            register("user", "whisp123", "USER")
-            register("alice", "alice123", "USER")
-            register("bob", "bob123", "USER")
         }
 
         fun register(u: String, p: String, role: String = "USER"): Pair<Boolean, String> {
@@ -67,13 +63,11 @@ class AccountManagementAndAdminGateTest {
     fun testDefaultSeededAccountsExist() {
         val manager = TestAccountManager()
         val all = manager.getAll()
-        assertTrue(all.size >= 6)
+        assertTrue(all.size >= 2)
         assertNotNull(manager.getUser("admin"))
         assertEquals("SUPER_ADMIN", manager.getUser("admin")?.role)
         assertNotNull(manager.getUser("operator"))
         assertEquals("NETWORK_ADMIN", manager.getUser("operator")?.role)
-        assertNotNull(manager.getUser("yashwanth"))
-        assertEquals("USER", manager.getUser("yashwanth")?.role)
     }
 
     @Test
