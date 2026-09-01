@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.offlinechat"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 5
+        versionName = "5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -22,13 +22,32 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("debug.keystore")
+            storePassword = "androiddebugkey"
+            keyAlias = "androiddebugkey"
+            keyPassword = "androiddebugkey"
+        }
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "androiddebugkey"
+            keyAlias = "androiddebugkey"
+            keyPassword = "androiddebugkey"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
