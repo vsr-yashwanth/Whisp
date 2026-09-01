@@ -1,4 +1,4 @@
-# 🛰️ Whisp — Off-Grid Peer-to-Peer Mesh & SOS Platform
+# Whisp — Off-Grid Peer-to-Peer Mesh & SOS Platform
 
 <div align="center">
 
@@ -10,13 +10,13 @@
 
 **Whisp** turns standard Android phones into an encrypted, off-grid communication network. When cell towers go down, power outages hit, or you're traveling off the grid, Whisp keeps people connected directly device-to-device using Bluetooth Low Energy and Wi-Fi Direct.
 
-[📲 Get the App](#-quick-install-android) • [✨ What's New](#-core-features) • [🌐 Admin Dashboard](#-web-control-plane) • [🛡️ Security](#-zero-trust-security) • [💻 Source Code](https://github.com/vsr-yashwanth/Whisp/tree/v4)
+[Get the App](#-quick-install-android) • [What's New](#-core-features) • [Admin Dashboard](#-web-control-plane) • [Security](#-zero-trust-security) • [Source Code](https://github.com/vsr-yashwanth/Whisp/tree/v4)
 
 </div>
 
 ---
 
-## 💡 Why Whisp?
+## Why Whisp?
 
 In natural disasters, remote hikes, or network blackouts, conventional messaging apps stop working the second you lose internet connectivity. 
 
@@ -27,37 +27,37 @@ Whisp creates a **living peer-to-peer mesh**:
 
 ```mermaid
 graph LR
-    A["📱 You (Alice)"] -->|"Direct BLE Hop"| B["📱 Neighbor (Relay)"]
-    B -->|"Physical Movement"| C["📱 Courier Node"]
-    C -->|"Delivered"| D["📱 Friend (Bob)"]
-    A -.->|"🚨 Priority SOS"| E["🚒 Local Authority Node"]
+    A["You (Alice)"] -->|"Direct BLE Hop"| B["Neighbor (Relay)"]
+    B -->|"Physical Movement"| C["Courier Node"]
+    C -->|"Delivered"| D["Friend (Bob)"]
+    A -.->|"Priority SOS"| E["Local Authority Node"]
 ```
 
 ---
 
-## ✨ Core Features
+## Core Features
 
-### ⛓️ Unique Decentralized Blockchain IDs
+### Unique Decentralized Blockchain IDs
 Every user gets a permanent cryptographic address (`0x...`). Messages are tagged to this blockchain ID so delay-tolerant nodes can hold and route packets specifically to you, even if your phone was completely offline when the message was sent.
 
-### 👥 1-on-1 Friends & Direct Private Chats
+###  1-on-1 Friends & Direct Private Chats
 Search for friends by their username or paste their `0x...` Blockchain ID. Add them to your personal directory and chat privately in isolated, end-to-end encrypted rooms with real-time hop tracing.
 
-### 🚨 Emergency Authorities SOS Channel
+###  Emergency Authorities SOS Channel
 A dedicated, high-priority emergency channel (`Priority 100`) designed for critical moments.
 - Instant 1-tap broadcast presets: **Medical Emergency**, **Fire / Hazard**, and **Search & Rescue**.
 - **Battery-Bypass Guarantee**: Emergency SOS broadcasts are never dropped by battery conservation policies, ensuring alerts reach first-responders and local stations.
 
-### 🔒 Dynamic User Accounts & Protected Admin Gate
+###  Dynamic User Accounts & Protected Admin Gate
 - Create accounts and sign in with your own custom credentials.
 - Zero-trust Admin Gate: Network controls and metrics require an Administrator Master Key to prevent unauthorized access.
 
-### 📝 Offline Collaborative Notes (CRDT)
+###  Offline Collaborative Notes (CRDT)
 Share and update checklists and survival plans with nearby peers without internet using conflict-free replicated data types.
 
 ---
 
-## 📲 Quick Install (Android)
+##  Quick Install (Android)
 
 You don't need Android Studio or a computer to use Whisp:
 
@@ -68,7 +68,7 @@ You don't need Android Studio or a computer to use Whisp:
 
 ---
 
-## 🌐 Web Control Plane & Mesh Radar
+##  Web Control Plane & Mesh Radar
 
 Whisp includes a lightweight browser-based control dashboard for network administrators and emergency coordinators:
 
@@ -79,7 +79,7 @@ Whisp includes a lightweight browser-based control dashboard for network adminis
 
 ---
 
-## 🛡️ Zero-Trust Security
+##  Zero-Trust Security
 
 | Principle | How Whisp Enforces It |
 | :--- | :--- |
@@ -90,7 +90,7 @@ Whisp includes a lightweight browser-based control dashboard for network adminis
 
 ---
 
-## 📂 Repository Branches
+##  Repository Branches
 
 - **[`main`](https://github.com/vsr-yashwanth/Whisp/tree/main)**: Project documentation and official release hub.
 - **[`v4`](https://github.com/vsr-yashwanth/Whisp/tree/v4)** *(Active)*: Latest release with Blockchain IDs, 1-on-1 Friends Chat, Emergency SOS Channel, and Web Control Plane.
