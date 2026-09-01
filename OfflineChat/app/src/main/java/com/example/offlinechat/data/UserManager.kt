@@ -72,7 +72,9 @@ class UserManager(private val context: Context) {
 
         val DEFAULT_ACCOUNTS = listOf(
             UserAccount("admin", "whispadmin123", role = "SUPER_ADMIN", status = "ACTIVE"),
-            UserAccount("operator", "operator123", role = "NETWORK_ADMIN", status = "ACTIVE")
+            UserAccount("operator", "operator123", role = "NETWORK_ADMIN", status = "ACTIVE"),
+            UserAccount("yashwanth", "password123", role = "USER", status = "ACTIVE"),
+            UserAccount("alice", "alice123", role = "USER", status = "ACTIVE")
         )
     }
 
@@ -81,11 +83,16 @@ class UserManager(private val context: Context) {
     }
 
     private fun ensureDefaultAccountsSeeded() {
-        val existing = getCustomUsersJson()
-        if (existing.length() == 0) {
-            val arr = JSONArray()
-            DEFAULT_ACCOUNTS.forEach { arr.put(it.toJson()) }
-            prefs.edit().putString("custom_users_list", arr.toString()).apply()
+        val currentUsers = getAllUsers().toMutableList()
+        var modified = false
+        for (defaultAcc in DEFAULT_ACCOUNTS) {
+            if (currentUsers.none { it.username.equals(defaultAcc.username, ignoreCase = true) }) {
+                currentUsers.add(defaultAcc)
+                modified = true
+            }
+        }
+        if (modified || getCustomUsersJson().length() == 0) {
+            saveUsers(currentUsers)
         }
     }
 
