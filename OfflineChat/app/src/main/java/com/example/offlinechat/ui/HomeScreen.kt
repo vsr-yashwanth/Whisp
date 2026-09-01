@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.offlinechat.OfflineChatApp
 import com.example.offlinechat.data.FriendContact
+import com.example.offlinechat.data.GeoZoneType
 import com.example.offlinechat.data.UserAccount
 import com.example.offlinechat.data.UserManager
 import com.example.offlinechat.network.ConnectionState
@@ -61,14 +62,20 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
     val userManager = remember { UserManager.getInstance(context) }
     val chatDao = remember { OfflineChatApp.instance.database.chatDao() }
+    val safetyManager = remember { OfflineChatApp.instance.safetyManager }
     val authPrefs = remember { context.getSharedPreferences("whisp_auth_prefs", Context.MODE_PRIVATE) }
     val loggedInUser = authPrefs.getString("logged_in_user", "User") ?: "User"
     val loggedInRole = authPrefs.getString("logged_in_role", "USER") ?: "USER"
 
     val myBlockchainId = remember(loggedInUser) { UserAccount.computeBlockchainId(loggedInUser) }
     val friendsList by chatDao.getFriends().collectAsState(initial = emptyList())
+    val activeIncidents by chatDao.getActiveIncidentCount().collectAsState(initial = 0)
+    val aiRisk by safetyManager.aiRisk.collectAsState()
+    val currentZone by safetyManager.currentZone.collectAsState()
 
-    var selectedTab by remember { mutableStateOf(0) } // 0: DIRECT CHATS, 1: MESH & SOS, 2: RADIO PEERS
+    // 0: CHATS, 1: SAFETY, 2: IDENTITY, 3: NETWORK
+    var selectedNavTab by remember { mutableStateOf(0) }
+    var chatSearchQuery by remember { mutableStateOf("") }
     var showAdminGateDialog by remember { mutableStateOf(false) }
     var showAddFriendDialog by remember { mutableStateOf(false) }
 
@@ -99,7 +106,7 @@ fun HomeScreen(
                 coroutineScope.launch {
                     chatDao.insertFriend(friend)
                     showAddFriendDialog = false
-                    Toast.makeText(context, "Added ${friend.displayName} to friends!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Added ${friend.displayName} to friends", Toast.LENGTH_SHORT).show()
                     onNavigateToChat("direct_${friend.username}")
                 }
             }
@@ -114,40 +121,42 @@ fun HomeScreen(
                         Text(
                             "WHISP",
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.5.sp,
+                            letterSpacing = 2.sp,
                             style = MaterialTheme.typography.titleMedium,
                             color = PureWhite
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Box(
                             modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(if (connectionState == ConnectionState.CONNECTED || isGlobalActive) SignalEmerald else TitaniumDim)
-                        )
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (connectionState == ConnectionState.CONNECTED || isGlobalActive) SignalEmerald.copy(alpha = 0.2f) else TitaniumDim.copy(alpha = 0.3f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (connectionState == ConnectionState.CONNECTED || isGlobalActive) SignalEmerald else TitaniumDim)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (connectionState == ConnectionState.CONNECTED || isGlobalActive) "MESH ONLINE" else "STANDBY",
+                                    color = if (connectionState == ConnectionState.CONNECTED || isGlobalActive) SignalEmerald else TitaniumLight,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.8.sp
+                                )
+                            }
+                        }
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNavigateToTouristSafety) {
-                        Icon(Icons.Rounded.Lock, contentDescription = "Whisp Tourist Safety Hub", tint = SignalEmerald, modifier = Modifier.size(22.dp))
-                    }
-                    IconButton(onClick = onNavigateToCrdtNotes) {
-                        Icon(Icons.Rounded.Edit, contentDescription = "Shared Notes", tint = TitaniumLight, modifier = Modifier.size(20.dp))
-                    }
-                    IconButton(onClick = {
-                        if (loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN" || loggedInUser == "admin") {
-                            onNavigateToAdmin()
-                        } else {
-                            showAdminGateDialog = true
-                        }
-                    }) {
-                        Icon(Icons.Rounded.Lock, contentDescription = "Network Grid Admin", tint = TitaniumLight, modifier = Modifier.size(20.dp))
-                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = TitaniumLight, modifier = Modifier.size(20.dp))
                     }
                     IconButton(onClick = onLogout) {
-                        Icon(Icons.Rounded.ExitToApp, contentDescription = "Log Out / Switch User", tint = TitaniumLight, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Rounded.ExitToApp, contentDescription = "Log Out", tint = TitaniumLight, modifier = Modifier.size(20.dp))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -156,558 +165,713 @@ fun HomeScreen(
                 )
             )
         },
+        bottomBar = {
+            NavigationBar(
+                containerColor = Color(0xFF0D111A),
+                tonalElevation = 8.dp,
+                modifier = Modifier
+                    .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            ) {
+                NavigationBarItem(
+                    selected = selectedNavTab == 0,
+                    onClick = { selectedNavTab = 0 },
+                    icon = { Icon(Icons.Rounded.Email, contentDescription = "Chats") },
+                    label = { Text("Chats", fontSize = 11.sp, fontWeight = if (selectedNavTab == 0) FontWeight.Bold else FontWeight.Normal) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = SignalEmerald,
+                        selectedTextColor = SignalEmerald,
+                        unselectedIconColor = TextMuted,
+                        unselectedTextColor = TextMuted,
+                        indicatorColor = SignalEmerald.copy(alpha = 0.15f)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedNavTab == 1,
+                    onClick = { selectedNavTab = 1 },
+                    icon = { Icon(Icons.Rounded.LocationOn, contentDescription = "Safety") },
+                    label = { Text("Safety", fontSize = 11.sp, fontWeight = if (selectedNavTab == 1) FontWeight.Bold else FontWeight.Normal) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Color(0xFF38BDF8),
+                        selectedTextColor = Color(0xFF38BDF8),
+                        unselectedIconColor = TextMuted,
+                        unselectedTextColor = TextMuted,
+                        indicatorColor = Color(0xFF38BDF8).copy(alpha = 0.15f)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedNavTab == 2,
+                    onClick = { selectedNavTab = 2 },
+                    icon = { Icon(Icons.Rounded.AccountBox, contentDescription = "Identity") },
+                    label = { Text("Identity", fontSize = 11.sp, fontWeight = if (selectedNavTab == 2) FontWeight.Bold else FontWeight.Normal) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Color(0xFFFBBF24),
+                        selectedTextColor = Color(0xFFFBBF24),
+                        unselectedIconColor = TextMuted,
+                        unselectedTextColor = TextMuted,
+                        indicatorColor = Color(0xFFFBBF24).copy(alpha = 0.15f)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedNavTab == 3,
+                    onClick = { selectedNavTab = 3 },
+                    icon = { Icon(Icons.Rounded.Share, contentDescription = "Network") },
+                    label = { Text("Network", fontSize = 11.sp, fontWeight = if (selectedNavTab == 3) FontWeight.Bold else FontWeight.Normal) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = PureWhite,
+                        selectedTextColor = PureWhite,
+                        unselectedIconColor = TextMuted,
+                        unselectedTextColor = TextMuted,
+                        indicatorColor = SurfaceElevated
+                    )
+                )
+            }
+        },
+        floatingActionButton = {
+            if (selectedNavTab == 0) {
+                FloatingActionButton(
+                    onClick = { showAddFriendDialog = true },
+                    containerColor = SignalEmerald,
+                    contentColor = ObsidianBlack,
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(6.dp)
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = "New Contact / Chat")
+                }
+            }
+        },
         containerColor = ObsidianBlack
     ) { paddingValues ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            horizontalAlignment = Alignment.Start
         ) {
-            item {
-                Spacer(modifier = Modifier.height(10.dp))
-                
-                // 1. Sleek Blockchain Identity & User Card
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(Color(0xFF14141E), Color(0xFF1A1A26))
-                            )
-                        )
-                        .border(1.dp, SurfaceBorder, RoundedCornerShape(20.dp))
-                        .padding(18.dp)
-                ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(SignalEmerald.copy(alpha = 0.15f))
-                                    .border(1.dp, SignalEmerald.copy(alpha = 0.4f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = loggedInUser.take(1).uppercase(),
-                                    fontWeight = FontWeight.Bold,
-                                    color = SignalEmerald,
-                                    fontSize = 18.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = loggedInUser,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = PureWhite,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(if (loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN") SignalEmerald.copy(alpha = 0.2f) else SurfaceElevated)
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = loggedInRole,
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN") SignalEmerald else TextSecondary
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = if (isGlobalActive) "Global Relay Active • Mesh Routing Online" else "Local Offline P2P • Delay-Tolerant Store & Forward",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isGlobalActive) SignalEmerald else TextSecondary
-                                )
-                            }
+            when (selectedNavTab) {
+                0 -> ChatsTabView(
+                    chatSearchQuery = chatSearchQuery,
+                    onSearchQueryChange = { chatSearchQuery = it },
+                    friendsList = friendsList,
+                    activeIncidents = activeIncidents,
+                    onNavigateToChat = onNavigateToChat,
+                    onOpenAddFriend = { showAddFriendDialog = true }
+                )
+                1 -> SafetyTabView(
+                    aiRiskScore = aiRisk.score,
+                    aiRiskLevel = aiRisk.level.name,
+                    zoneName = currentZone?.name ?: "Open Trail",
+                    zoneType = currentZone?.zoneType ?: GeoZoneType.SAFE,
+                    onOpenFullSafetyHub = onNavigateToTouristSafety,
+                    onOpenAuthorityDesk = onNavigateToAuthorityDispatch
+                )
+                2 -> IdentityTabView(
+                    username = loggedInUser,
+                    role = loggedInRole,
+                    blockchainId = myBlockchainId,
+                    onOpenFullHub = onNavigateToTouristSafety
+                )
+                3 -> NetworkTabView(
+                    discoveredPeers = discoveredPeers,
+                    connectionState = connectionState,
+                    isGlobalActive = isGlobalActive,
+                    loggedInRole = loggedInRole,
+                    loggedInUser = loggedInUser,
+                    onConnectToPeer = onConnectToPeer,
+                    onNavigateToChat = onNavigateToChat,
+                    onOpenCrdtNotes = onNavigateToCrdtNotes,
+                    onOpenAdmin = {
+                        if (loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN" || loggedInUser == "admin") {
+                            onNavigateToAdmin()
+                        } else {
+                            showAdminGateDialog = true
                         }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Divider(color = SurfaceBorderSubtle, thickness = 1.dp)
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Blockchain ID Address Strip with 1-Tap Copy
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF0D0D12))
-                                .clickable {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("Whisp Blockchain ID", myBlockchainId)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "Blockchain ID copied to clipboard!", Toast.LENGTH_SHORT).show()
-                                }
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = SignalEmerald, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("DECENTRALIZED BLOCKCHAIN ID", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted, fontFamily = FontFamily.Monospace)
-                                Text(
-                                    text = "${myBlockchainId.take(10)}...${myBlockchainId.takeLast(8)}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = PureWhite,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Icon(Icons.Rounded.Share, contentDescription = "Copy ID", tint = TitaniumLight, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Whisp Tourist Safety & Digital ID Banner
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364))
-                            )
-                        )
-                        .border(1.dp, SignalEmerald.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
-                        .clickable { onNavigateToTouristSafety() }
-                        .padding(14.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(SignalEmerald.copy(alpha = 0.2f))
-                                .border(1.dp, SignalEmerald, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.Lock, contentDescription = "Tourist Safety", tint = SignalEmerald, modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("WHISP TOURIST SAFETY HUB", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = PureWhite)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(SignalEmerald)
-                                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                                ) {
-                                    Text("SIH 2026", fontSize = 8.sp, fontWeight = FontWeight.Black, color = ObsidianBlack)
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text("Digital Tourist ID • Smart Geo-Fencing • 33-Pt Pose Anomaly & 2-Stage SOS", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                        }
-                        Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = SignalEmerald, modifier = Modifier.size(18.dp))
-                    }
-                }
-
-                if (loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN" || loggedInUser == "admin") {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF1B1420))
-                            .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                            .clickable { onNavigateToAuthorityDispatch() }
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Settings, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Open Whisp Multi-Agency Authority Dispatch Desk", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8), modifier = Modifier.weight(1f))
-                            Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 2. High-Priority Emergency Authorities SOS Banner
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(Color(0xFF2A0E14), Color(0xFF1E0B10))
-                            )
-                        )
-                        .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-                        .clickable { onNavigateToChat("EMERGENCY_SOS") }
-                        .padding(14.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFEF4444).copy(alpha = 0.2f))
-                                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.Warning, contentDescription = "SOS", tint = Color(0xFFEF4444), modifier = Modifier.size(20.dp))
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("EMERGENCY AUTHORITIES SOS", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color(0xFFFCA5A5))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFFEF4444))
-                                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                                ) {
-                                    Text("PRIORITY 100", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text("Direct multi-hop broadcast to local authorities & emergency nodes", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                        }
-                        Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // 3. Navigation Channel Switcher: DIRECT CHATS vs GENERAL MESH vs RADIO PEERS
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SurfaceDark)
-                        .padding(4.dp)
-                ) {
-                    listOf("DIRECT CHATS", "GENERAL MESH", "RADIO PEERS").forEachIndexed { index, title ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (selectedTab == index) SurfaceElevated else Color.Transparent)
-                                .clickable { selectedTab = index }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = title,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (selectedTab == index) PureWhite else TextMuted,
-                                letterSpacing = 0.5.sp
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-            }
-
-            // TAB 0: 1-on-1 DIRECT FRIENDS CHATS
-            if (selectedTab == 0) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            "FRIENDS & DIRECT CHATS",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = TextSecondary,
-                            letterSpacing = 1.sp
-                        )
-                        Button(
-                            onClick = { showAddFriendDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = SignalEmerald, contentColor = ObsidianBlack),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier.height(30.dp)
-                        ) {
-                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("ADD FRIEND", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-
-                if (friendsList.isEmpty()) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(SurfaceDark.copy(alpha = 0.5f))
-                                .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(16.dp))
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Rounded.Person, contentDescription = null, tint = TitaniumDim, modifier = Modifier.size(32.dp))
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text("No direct friends added yet", style = MaterialTheme.typography.bodyMedium, color = PureWhite, fontWeight = FontWeight.SemiBold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text("Search a username or Blockchain ID to start a 1-on-1 private chat", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                Spacer(modifier = Modifier.height(12.dp))
-                                OutlinedButton(
-                                    onClick = { showAddFriendDialog = true },
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SignalEmerald),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, SignalEmerald),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text("Find & Add Friends", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    items(friendsList) { friend ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(SurfaceDark)
-                                .border(1.dp, SurfaceBorder, RoundedCornerShape(16.dp))
-                                .clickable { onNavigateToChat("direct_${friend.username}") }
-                                .padding(14.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .clip(CircleShape)
-                                        .background(SurfaceElevated)
-                                        .border(1.dp, SurfaceBorderSubtle, CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = friend.displayName.take(1).uppercase(),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = SignalEmerald,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = friend.displayName,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = PureWhite
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "@${friend.username}",
-                                            fontSize = 11.sp,
-                                            color = TextMuted
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = friend.lastMessageSnippet ?: "ID: ${friend.blockchainId.take(8)}...${friend.blockchainId.takeLast(6)}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (friend.lastMessageSnippet != null) TextSecondary else TextMuted,
-                                        maxLines = 1
-                                    )
-                                }
-                                Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    }
-                }
-            }
-
-            // TAB 1: GENERAL MESH BROADCAST
-            if (selectedTab == 1) {
-                item {
-                    Text(
-                        "GLOBAL CHANNELS",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // General Mesh Broadcast
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(SurfaceDark)
-                            .border(1.dp, SurfaceBorder, RoundedCornerShape(16.dp))
-                            .clickable { onNavigateToChat("General Chat") }
-                            .padding(16.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(SurfaceElevated)
-                                    .border(1.dp, SurfaceBorderSubtle, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Rounded.Lock, contentDescription = null, tint = PureWhite, modifier = Modifier.size(18.dp))
-                            }
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("General Mesh Broadcast", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = PureWhite)
-                                Text("Decentralized broadcast to all nodes in range", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                            }
-                            Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-            }
-
-            // TAB 2: RADIO PEERS
-            if (selectedTab == 2) {
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "RADIO FREQUENCY PEERS",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = TextSecondary,
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.weight(1f))
-                        if (discoveredPeers.isNotEmpty()) {
-                            Text(
-                                "${discoveredPeers.size} active",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextSecondary
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-
-                if (discoveredPeers.isEmpty()) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(SurfaceDark.copy(alpha = 0.5f))
-                                .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(16.dp))
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp),
-                                    strokeWidth = 2.dp,
-                                    color = TitaniumLight
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    "Scanning radio frequencies & nearby BLE nodes...",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    items(discoveredPeers) { peer ->
-                        val isGlobal = peer.endpointId.startsWith("Global")
-                        val tagText = if (isGlobal) "GLOBAL RELAY" else if (peer.name.contains("Bridge")) "BRIDGE" else "BLE"
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(SurfaceDark)
-                                .border(1.dp, SurfaceBorder, RoundedCornerShape(16.dp))
-                                .clickable {
-                                    onConnectToPeer(peer)
-                                    onNavigateToChat(peer.name.ifBlank { peer.endpointId })
-                                }
-                                .padding(14.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(SurfaceElevated)
-                                        .border(1.dp, SurfaceBorderSubtle, CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isGlobal) {
-                                        Icon(Icons.Rounded.Place, contentDescription = null, tint = SignalEmerald, modifier = Modifier.size(18.dp))
-                                    } else {
-                                        Text(
-                                            text = peer.name.take(1).uppercase().ifBlank { "P" },
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = PureWhite,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = peer.name.ifBlank { "Peer ${peer.endpointId}" },
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = PureWhite
-                                    )
-                                    Text(
-                                        text = "ID: ${peer.endpointId.take(22)}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = TextSecondary
-                                    )
-                                }
-                                
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(SurfaceElevated)
-                                        .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        text = tagText,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isGlobal) SignalEmerald else TitaniumLight
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(32.dp))
+                    },
+                    onOpenAuthorityDesk = onNavigateToAuthorityDispatch
+                )
             }
         }
     }
 }
 
+// =========================================================================
+// TAB 0: CHATS & CHANNELS
+// =========================================================================
+@Composable
+private fun ChatsTabView(
+    chatSearchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    friendsList: List<FriendContact>,
+    activeIncidents: Int,
+    onNavigateToChat: (String) -> Unit,
+    onOpenAddFriend: () -> Unit
+) {
+    val filteredFriends = remember(chatSearchQuery, friendsList) {
+        if (chatSearchQuery.isBlank()) friendsList
+        else friendsList.filter {
+            it.displayName.contains(chatSearchQuery, ignoreCase = true) ||
+            it.username.contains(chatSearchQuery, ignoreCase = true)
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Search Bar
+        item {
+            OutlinedTextField(
+                value = chatSearchQuery,
+                onValueChange = onSearchQueryChange,
+                placeholder = { Text("Search chats and contacts...", color = TextMuted, fontSize = 14.sp) },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = TextSecondary) },
+                trailingIcon = {
+                    if (chatSearchQuery.isNotEmpty()) {
+                        IconButton(onClick = { onSearchQueryChange("") }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Clear", tint = TextMuted)
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = SurfaceDark,
+                    unfocusedContainerColor = SurfaceDark,
+                    focusedBorderColor = SignalEmerald,
+                    unfocusedBorderColor = SurfaceBorderSubtle,
+                    focusedTextColor = PureWhite,
+                    unfocusedTextColor = PureWhite
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        // Dedicated Emergency Authorities SOS Channel
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(Color(0xFF261014), Color(0xFF190C10))
+                        )
+                    )
+                    .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), RoundedCornerShape(20.dp))
+                    .clickable { onNavigateToChat("emergency_authorities") }
+                    .padding(18.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFEF4444).copy(alpha = 0.2f))
+                            .border(1.dp, Color(0xFFEF4444), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.Warning, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(24.dp))
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("EMERGENCY AUTHORITIES SOS", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFFEF4444))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("PRIORITY 100", fontSize = 8.sp, fontWeight = FontWeight.Black, color = ObsidianBlack)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (activeIncidents > 0) "$activeIncidents ACTIVE INCIDENTS REPORTED" else "Dedicated Police & Medical Emergency Channel",
+                            color = if (activeIncidents > 0) Color(0xFFFCA5A5) else TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = if (activeIncidents > 0) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                    Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+
+        // Global Mesh Broadcast Channel
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(Color(0xFF101B2E), Color(0xFF0F1420))
+                        )
+                    )
+                    .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+                    .clickable { onNavigateToChat("General Mesh") }
+                    .padding(18.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF38BDF8).copy(alpha = 0.2f))
+                            .border(1.dp, Color(0xFF38BDF8), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.Share, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(24.dp))
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("General Mesh Broadcast", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Public decentralized room for all local radio peers", color = TextSecondary, fontSize = 11.sp)
+                    }
+                    Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+
+        // Direct 1-on-1 Chats Section Header
+        item {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "DIRECT 1-ON-1 CHATS",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    letterSpacing = 1.2.sp
+                )
+                Text(
+                    "${friendsList.size} Contacts",
+                    fontSize = 11.sp,
+                    color = SignalEmerald,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
+        if (filteredFriends.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(SurfaceDark)
+                        .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(18.dp))
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = TextMuted, modifier = Modifier.size(40.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("No direct chats yet", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Tap '+' below to add a contact by username or ID", color = TextSecondary, fontSize = 11.sp)
+                    }
+                }
+            }
+        } else {
+            items(filteredFriends) { friend ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(SurfaceDark)
+                        .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(18.dp))
+                        .clickable { onNavigateToChat("direct_${friend.username}") }
+                        .padding(16.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(SurfaceElevated),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = friend.displayName.take(1).uppercase(),
+                                color = SignalEmerald,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(friend.displayName, color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "@${friend.username} • ${friend.blockchainId.take(8)}...${friend.blockchainId.takeLast(4)}",
+                                fontSize = 11.sp,
+                                color = TextMuted,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = TitaniumLight, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =========================================================================
+// TAB 1: SAFETY RADAR & SOS
+// =========================================================================
+@Composable
+private fun SafetyTabView(
+    aiRiskScore: Int,
+    aiRiskLevel: String,
+    zoneName: String,
+    zoneType: GeoZoneType,
+    onOpenFullSafetyHub: () -> Unit,
+    onOpenAuthorityDesk: () -> Unit
+) {
+    val zoneColor = when (zoneType) {
+        GeoZoneType.SAFE -> SignalEmerald
+        GeoZoneType.CAUTION -> Color(0xFFFBBF24)
+        GeoZoneType.RESTRICTED -> Color(0xFFEF4444)
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Hero Card
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(Color(0xFF0F1E2A), Color(0xFF0B141C))
+                        )
+                    )
+                    .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                    .padding(20.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("WHISP TOURIST SAFETY HUB", fontSize = 11.sp, color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Smart Corridor Protection", fontSize = 18.sp, fontWeight = FontWeight.Black, color = PureWhite)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SignalEmerald)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("ACTIVE", color = ObsidianBlack, fontWeight = FontWeight.Black, fontSize = 9.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // AI Risk Metric
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(SurfaceDark)
+                                .padding(12.dp)
+                        ) {
+                            Column {
+                                Text("AI RISK SCORE", fontSize = 9.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("$aiRiskScore%", fontSize = 18.sp, fontWeight = FontWeight.Black, color = if (aiRiskScore > 50) Color(0xFFEF4444) else SignalEmerald)
+                                Text(aiRiskLevel, fontSize = 10.sp, color = TextSecondary)
+                            }
+                        }
+
+                        // Current Zone Metric
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(SurfaceDark)
+                                .padding(12.dp)
+                        ) {
+                            Column {
+                                Text("CURRENT ZONE", fontSize = 9.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(zoneName.take(14), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = zoneColor)
+                                Text(zoneType.name, fontSize = 10.sp, color = TextSecondary)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Button(
+                        onClick = onOpenFullSafetyHub,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38BDF8), contentColor = ObsidianBlack),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(44.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("OPEN 360 RADAR & AI POSE HUB", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Multi-Agency Authority Dispatch Quick Access
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF181520))
+                    .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.4f), RoundedCornerShape(18.dp))
+                    .clickable { onOpenAuthorityDesk() }
+                    .padding(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Lock, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Multi-Agency Authority Dispatch Desk", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("Police, Medical, and Rangers Incident Coordination", fontSize = 11.sp, color = TextSecondary)
+                    }
+                    Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
+}
+
+// =========================================================================
+// TAB 2: DIGITAL TOURIST ID & PRIVACY
+// =========================================================================
+@Composable
+private fun IdentityTabView(
+    username: String,
+    role: String,
+    blockchainId: String,
+    onOpenFullHub: () -> Unit
+) {
+    val context = LocalContext.current
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            // Apple Wallet Style Pass Card
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xFF1E2838), Color(0xFF101724))
+                        )
+                    )
+                    .border(1.dp, SignalEmerald.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                    .padding(22.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("DIGITAL TOURIST PASS", color = SignalEmerald, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.5.sp)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(SignalEmerald.copy(alpha = 0.2f))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text("VERIFIED ID", color = SignalEmerald, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Text(username.replaceFirstChar { it.uppercase() }, color = PureWhite, fontWeight = FontWeight.Black, fontSize = 22.sp)
+                    Text("Role: $role • Registered Tourist", fontSize = 12.sp, color = TextSecondary)
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Divider(color = SurfaceBorderSubtle)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text("BLOCKCHAIN DECENTRALIZED IDENTITY", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = blockchainId,
+                            color = Color(0xFF38BDF8),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("Blockchain ID", blockchainId)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "Copied ID to clipboard", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Icon(Icons.Rounded.Share, contentDescription = "Copy", tint = TitaniumLight, modifier = Modifier.size(16.dp))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = onOpenFullHub,
+                        colors = ButtonDefaults.buttonColors(containerColor = SignalEmerald, contentColor = ObsidianBlack),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(44.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.AccountBox, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("SHOW VERIFIABLE QR CARD & CONSENTS", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =========================================================================
+// TAB 3: NETWORK & MESH GRID
+// =========================================================================
+@Composable
+private fun NetworkTabView(
+    discoveredPeers: List<Peer>,
+    connectionState: ConnectionState,
+    isGlobalActive: Boolean,
+    loggedInRole: String,
+    loggedInUser: String,
+    onConnectToPeer: (Peer) -> Unit,
+    onNavigateToChat: (String) -> Unit,
+    onOpenCrdtNotes: () -> Unit,
+    onOpenAdmin: () -> Unit,
+    onOpenAuthorityDesk: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Network Health Card
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(SurfaceDark)
+                    .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(20.dp))
+                    .padding(18.dp)
+            ) {
+                Column {
+                    Text("DECENTRALIZED RADIO TOPOLOGY", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column {
+                            Text("${discoveredPeers.size}", fontSize = 24.sp, fontWeight = FontWeight.Black, color = PureWhite)
+                            Text("Discovered Peers", fontSize = 11.sp, color = TextSecondary)
+                        }
+                        Column {
+                            Text(if (isGlobalActive) "ACTIVE" else "OFFLINE", fontSize = 24.sp, fontWeight = FontWeight.Black, color = if (isGlobalActive) SignalEmerald else TitaniumDim)
+                            Text("Relay Gateway", fontSize = 11.sp, color = TextSecondary)
+                        }
+                        Column {
+                            Text(connectionState.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8))
+                            Text("Local Radio State", fontSize = 11.sp, color = TextSecondary)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Shared CRDT Notes Tile
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(SurfaceDark)
+                    .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(18.dp))
+                    .clickable { onOpenCrdtNotes() }
+                    .padding(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Edit, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("CRDT Collaborative Field Notes", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Offline shared checklists with zero-conflict merging", fontSize = 11.sp, color = TextSecondary)
+                    }
+                    Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = TitaniumLight, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+
+        // Admin Grid Console Tile
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(SurfaceDark)
+                    .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(18.dp))
+                    .clickable { onOpenAdmin() }
+                    .padding(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Lock, contentDescription = null, tint = SignalEmerald, modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Network Grid Operator Console", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Topology inspector, PRoPHET routing, and DTN custody", fontSize = 11.sp, color = TextSecondary)
+                    }
+                    Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = TitaniumLight, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
+}
+
+// =========================================================================
+// DIALOGS: ADD FRIEND & ADMIN AUTH GATE
+// =========================================================================
 @Composable
 fun AddFriendDialog(
     onDismiss: () -> Unit,
@@ -716,36 +880,33 @@ fun AddFriendDialog(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val searchResults = remember(searchQuery) {
-        if (searchQuery.isBlank()) emptyList() else userManager.searchUsers(searchQuery)
+        if (searchQuery.isBlank()) emptyList()
+        else userManager.searchUsers(searchQuery)
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceDark,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(20.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Person, contentDescription = null, tint = SignalEmerald, modifier = Modifier.size(22.dp))
+                Icon(Icons.Rounded.Person, contentDescription = null, tint = SignalEmerald, modifier = Modifier.size(24.dp))
                 Spacer(modifier = Modifier.width(10.dp))
-                Text("Search & Add Friend", fontWeight = FontWeight.Bold, color = PureWhite, fontSize = 16.sp)
+                Text("Add New Contact", fontWeight = FontWeight.Bold, color = PureWhite, fontSize = 16.sp)
             }
         },
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(
-                    "Search by username or paste a 0x... Blockchain ID to start a 1-on-1 personal direct chat.",
+                    "Search registered users by username or paste their 0x... Blockchain ID to initiate 1-on-1 encrypted messaging.",
                     fontSize = 12.sp,
-                    color = TextSecondary,
-                    lineHeight = 16.sp
+                    color = TextSecondary
                 )
 
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    label = { Text("Username or 0x... Blockchain ID") },
+                    placeholder = { Text("Search username or 0x...", color = TextMuted, fontSize = 13.sp) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = SignalEmerald,
@@ -754,21 +915,20 @@ fun AddFriendDialog(
                         unfocusedTextColor = PureWhite,
                         focusedLabelColor = SignalEmerald
                     ),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 if (searchResults.isNotEmpty()) {
-                    Text("MATCHING USERS:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, fontFamily = FontFamily.Monospace)
+                    Text("MATCHING USERS:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         searchResults.forEach { user ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(12.dp))
                                     .background(SurfaceElevated)
-                                    .border(1.dp, SurfaceBorderSubtle, RoundedCornerShape(10.dp))
-                                    .padding(10.dp)
+                                    .padding(12.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.weight(1f)) {
@@ -791,9 +951,9 @@ fun AddFriendDialog(
                                             onFriendAdded(friend)
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = SignalEmerald, contentColor = ObsidianBlack),
-                                        shape = RoundedCornerShape(6.dp),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        modifier = Modifier.height(28.dp)
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(30.dp)
                                     ) {
                                         Text("ADD", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     }
@@ -802,18 +962,17 @@ fun AddFriendDialog(
                         }
                     }
                 } else if (searchQuery.isNotBlank()) {
-                    // Manual entry option for offline peers
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(SurfaceElevated)
-                            .padding(10.dp)
+                            .padding(12.dp)
                     ) {
                         Column {
                             Text("Direct ID Friend Entry", fontWeight = FontWeight.Bold, color = PureWhite, fontSize = 12.sp)
                             Text("Add '@${searchQuery.trim()}' as a custom contact", fontSize = 11.sp, color = TextSecondary)
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Button(
                                 onClick = {
                                     val clean = searchQuery.trim()
@@ -825,10 +984,10 @@ fun AddFriendDialog(
                                     onFriendAdded(friend)
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = SignalEmerald, contentColor = ObsidianBlack),
-                                shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.fillMaxWidth().height(32.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth().height(36.dp)
                             ) {
-                                Text("ADD AS CONTACT & CHAT", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("ADD AS CONTACT & CHAT", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -864,7 +1023,7 @@ fun AdminAuthGateDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceDark,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(20.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Lock, contentDescription = null, tint = SignalEmerald, modifier = Modifier.size(22.dp))
