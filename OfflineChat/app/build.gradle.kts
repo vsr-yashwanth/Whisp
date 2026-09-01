@@ -28,12 +28,16 @@ android {
             storePassword = "androiddebugkey"
             keyAlias = "androiddebugkey"
             keyPassword = "androiddebugkey"
+            enableV1Signing = true
+            enableV2Signing = true
         }
         getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "androiddebugkey"
             keyAlias = "androiddebugkey"
             keyPassword = "androiddebugkey"
+            enableV1Signing = true
+            enableV2Signing = true
         }
     }
 
