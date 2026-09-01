@@ -91,14 +91,14 @@ class EWMAPredictionEngine(
         if (stats != null) {
             sb.append("• Historical Deliveries: ${stats.successfulDeliveries} OK / ${stats.failedDeliveries} FAIL\n")
             if (stats.disconnectCount > 2) {
-                sb.append("⚠️ Frequent disconnections observed (${stats.disconnectCount} drops)\n")
+                sb.append("[WARNING] Frequent disconnections observed (${stats.disconnectCount} drops)\n")
             }
         } else {
             sb.append("• Newly discovered peer (provisional routing score)\n")
         }
 
         if (candidate.metrics.batteryLevel in 0..20 && !candidate.metrics.isCharging) {
-            sb.append("⚠️ Low battery relay device (${candidate.metrics.batteryLevel}%)\n")
+            sb.append("[WARNING] Low battery relay device (${candidate.metrics.batteryLevel}%)\n")
         }
 
         return sb.toString().trim()

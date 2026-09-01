@@ -158,6 +158,12 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToCrdtNotes = {
                                     navController.navigate("crdt_notes")
                                 },
+                                onNavigateToTouristSafety = {
+                                    navController.navigate("tourist_safety")
+                                },
+                                onNavigateToAuthorityDispatch = {
+                                    navController.navigate("authority_dispatch")
+                                },
                                 onLogout = handleLogout
                             )
                         }
@@ -221,6 +227,17 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("crdt_notes") {
                             com.example.offlinechat.ui.CrdtNotesScreen(
+                                onNavigateBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("tourist_safety") {
+                            com.example.offlinechat.ui.safety.TouristSafetyScreen(
+                                onNavigateBack = { navController.popBackStack() },
+                                onNavigateToAuthorityView = { navController.navigate("authority_dispatch") }
+                            )
+                        }
+                        composable("authority_dispatch") {
+                            com.example.offlinechat.ui.safety.AuthorityDispatchScreen(
                                 onNavigateBack = { navController.popBackStack() }
                             )
                         }

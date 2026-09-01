@@ -14,9 +14,15 @@ import androidx.room.RoomDatabase
         PeerEncounterEntity::class,
         CrdtOperationEntity::class,
         NetworkEpochEntity::class,
-        FriendContact::class
+        FriendContact::class,
+        TouristProfile::class,
+        GeoFenceZone::class,
+        TripItinerary::class,
+        SafetyIncident::class,
+        CctvCamera::class,
+        BlockchainBlockEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class ChatDatabase : RoomDatabase() {

@@ -217,23 +217,23 @@ fun ChatScreen(
                     ) {
                         AssistChip(
                             onClick = {
-                                viewModel.sendMessage("🚨 MEDICAL EMERGENCY: Urgent medical assistance required at current coordinates.", isEmergency = true)
+                                viewModel.sendMessage("MEDICAL EMERGENCY: Urgent medical assistance required at current coordinates.", isEmergency = true)
                             },
-                            label = { Text("🚑 Medical", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text("Medical", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
                             colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFF2A0E14), labelColor = Color(0xFFFCA5A5))
                         )
                         AssistChip(
                             onClick = {
-                                viewModel.sendMessage("🔥 FIRE / HAZARD: Active fire outbreak detected in local zone.", isEmergency = true)
+                                viewModel.sendMessage("FIRE / HAZARD: Active fire outbreak detected in local zone.", isEmergency = true)
                             },
-                            label = { Text("🔥 Fire", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text("Fire", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
                             colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFF2A0E14), labelColor = Color(0xFFFCA5A5))
                         )
                         AssistChip(
                             onClick = {
-                                viewModel.sendMessage("🆘 SEARCH & RESCUE: Trapped / stranded individuals need rescue.", isEmergency = true)
+                                viewModel.sendMessage("SEARCH & RESCUE: Trapped / stranded individuals need rescue.", isEmergency = true)
                             },
-                            label = { Text("🆘 Rescue", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text("Rescue", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
                             colors = AssistChipDefaults.assistChipColors(containerColor = Color(0xFF2A0E14), labelColor = Color(0xFFFCA5A5))
                         )
                     }

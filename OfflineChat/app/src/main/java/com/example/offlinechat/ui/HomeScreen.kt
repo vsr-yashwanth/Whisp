@@ -53,6 +53,8 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToAdmin: () -> Unit,
     onNavigateToCrdtNotes: () -> Unit = {},
+    onNavigateToTouristSafety: () -> Unit = {},
+    onNavigateToAuthorityDispatch: () -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -126,6 +128,9 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToTouristSafety) {
+                        Icon(Icons.Rounded.Lock, contentDescription = "Whisp Tourist Safety Hub", tint = SignalEmerald, modifier = Modifier.size(22.dp))
+                    }
                     IconButton(onClick = onNavigateToCrdtNotes) {
                         Icon(Icons.Rounded.Edit, contentDescription = "Shared Notes", tint = TitaniumLight, modifier = Modifier.size(20.dp))
                     }
@@ -262,7 +267,75 @@ fun HomeScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Whisp Tourist Safety & Digital ID Banner
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364))
+                            )
+                        )
+                        .border(1.dp, SignalEmerald.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                        .clickable { onNavigateToTouristSafety() }
+                        .padding(14.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(SignalEmerald.copy(alpha = 0.2f))
+                                .border(1.dp, SignalEmerald, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.Lock, contentDescription = "Tourist Safety", tint = SignalEmerald, modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("WHISP TOURIST SAFETY HUB", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = PureWhite)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(SignalEmerald)
+                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                ) {
+                                    Text("SIH 2026", fontSize = 8.sp, fontWeight = FontWeight.Black, color = ObsidianBlack)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text("Digital Tourist ID • Smart Geo-Fencing • 33-Pt Pose Anomaly & 2-Stage SOS", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                        }
+                        Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = SignalEmerald, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                if (loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN" || loggedInUser == "admin") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF1B1420))
+                            .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .clickable { onNavigateToAuthorityDispatch() }
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Settings, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Open Whisp Multi-Agency Authority Dispatch Desk", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8), modifier = Modifier.weight(1f))
+                            Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // 2. High-Priority Emergency Authorities SOS Banner
                 Box(

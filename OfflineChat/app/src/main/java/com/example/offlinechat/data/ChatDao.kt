@@ -136,4 +136,83 @@ interface ChatDao {
 
     @Query("SELECT COUNT(*) FROM friends")
     fun getFriendCount(): Flow<Int>
+
+    // -------------------------------------------------------------
+    // WHISP — Smart Tourist Safety & Incident Response DAO Methods
+    // -------------------------------------------------------------
+
+    // 1. Tourist Profiles
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTouristProfile(profile: TouristProfile)
+
+    @Query("SELECT * FROM safety_tourist_profiles WHERE touristId = :touristId LIMIT 1")
+    suspend fun getTouristProfile(touristId: String): TouristProfile?
+
+    @Query("SELECT * FROM safety_tourist_profiles ORDER BY registeredAt DESC")
+    fun getAllTouristProfiles(): Flow<List<TouristProfile>>
+
+    // 2. Geo-Fence Zones
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGeoFenceZone(zone: GeoFenceZone)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGeoFenceZones(zones: List<GeoFenceZone>)
+
+    @Query("SELECT * FROM safety_geofence_zones ORDER BY riskWeight DESC")
+    fun getAllGeoFenceZones(): Flow<List<GeoFenceZone>>
+
+    @Query("SELECT * FROM safety_geofence_zones WHERE zoneId = :zoneId LIMIT 1")
+    suspend fun getGeoFenceZone(zoneId: String): GeoFenceZone?
+
+    // 3. Trip Itineraries
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTripItinerary(trip: TripItinerary)
+
+    @Query("SELECT * FROM safety_trip_itineraries WHERE status = 'ACTIVE' ORDER BY createdAt DESC LIMIT 1")
+    fun getActiveTripItinerary(): Flow<TripItinerary?>
+
+    @Query("SELECT * FROM safety_trip_itineraries ORDER BY createdAt DESC")
+    fun getAllTripItineraries(): Flow<List<TripItinerary>>
+
+    @Query("UPDATE safety_trip_itineraries SET waypointsJson = :waypointsJson, currentCheckpointIndex = :currentIndex, status = :status WHERE tripId = :tripId")
+    suspend fun updateTripProgress(tripId: String, waypointsJson: String, currentIndex: Int, status: String)
+
+    // 4. Incidents & Emergency SOS
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertIncident(incident: SafetyIncident)
+
+    @Query("SELECT * FROM safety_incidents ORDER BY timestamp DESC")
+    fun getAllIncidents(): Flow<List<SafetyIncident>>
+
+    @Query("SELECT * FROM safety_incidents WHERE status != 'RESOLVED' ORDER BY timestamp DESC")
+    fun getActiveIncidents(): Flow<List<SafetyIncident>>
+
+    @Query("UPDATE safety_incidents SET status = :status, assignedAgency = :assignedAgency, responderNotes = :notes WHERE incidentId = :incidentId")
+    suspend fun updateIncidentStatus(incidentId: String, status: IncidentStatus, assignedAgency: ResponseAgency, notes: String)
+
+    @Query("SELECT COUNT(*) FROM safety_incidents WHERE status != 'RESOLVED'")
+    fun getActiveIncidentCount(): Flow<Int>
+
+    // 5. Targeted CCTV Cameras
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCctvCamera(camera: CctvCamera)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCctvCameras(cameras: List<CctvCamera>)
+
+    @Query("SELECT * FROM safety_cctv_cameras ORDER BY lastEventTimestamp DESC")
+    fun getAllCctvCameras(): Flow<List<CctvCamera>>
+
+    // 6. Blockchain Trust Ledger
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBlockchainBlock(block: BlockchainBlockEntity)
+
+    @Query("SELECT * FROM safety_blockchain_blocks ORDER BY `index` ASC")
+    fun getAllBlockchainBlocks(): Flow<List<BlockchainBlockEntity>>
+
+    @Query("SELECT * FROM safety_blockchain_blocks ORDER BY `index` DESC LIMIT 1")
+    suspend fun getLatestBlockchainBlock(): BlockchainBlockEntity?
+
+    @Query("SELECT COUNT(*) FROM safety_blockchain_blocks")
+    fun getBlockchainBlockCount(): Flow<Int>
 }

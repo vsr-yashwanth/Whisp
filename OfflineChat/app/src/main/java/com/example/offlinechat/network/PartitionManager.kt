@@ -41,7 +41,7 @@ class PartitionManager(
         // 1. Detect Partition Split: Sudden drop in peers (>=2 dropped from a multi-peer mesh)
         if (previousPeerCount >= 3 && currentCount <= previousPeerCount / 2) {
             currentEpochCounter++
-            Log.w("PartitionManager", "⚠️ Network partition detected! Peers dropped from $previousPeerCount to $currentCount (New Epoch: $currentEpochCounter)")
+            Log.w("PartitionManager", "[WARNING] Network partition detected! Peers dropped from $previousPeerCount to $currentCount (New Epoch: $currentEpochCounter)")
             _partitionStatus.value = _partitionStatus.value.copy(
                 currentEpoch = currentEpochCounter,
                 activeMemberCount = currentCount + 1,
@@ -54,7 +54,7 @@ class PartitionManager(
         // 2. Detect Partition Merge: New peers reappear after a partition
         else if (_partitionStatus.value.isPartitioned && currentCount > previousPeerCount) {
             currentEpochCounter++
-            Log.i("PartitionManager", "🔄 Network Partition Reconnected! Healing and reconciling with $currentCount peers (Epoch: $currentEpochCounter)")
+            Log.i("PartitionManager", "[INFO] Network Partition Reconnected! Healing and reconciling with $currentCount peers (Epoch: $currentEpochCounter)")
             _partitionStatus.value = _partitionStatus.value.copy(
                 currentEpoch = currentEpochCounter,
                 activeMemberCount = currentCount + 1,

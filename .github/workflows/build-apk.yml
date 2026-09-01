@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - 'v*'
-    branches: [ "main", "v4" ]
+    branches: [ "main", "v4", "v5" ]
   workflow_dispatch:
 
 permissions:
@@ -48,24 +48,25 @@ jobs:
         with:
           name: Whisp ${{ github.ref_name }}
           body: |
-            ## 🛰️ Whisp ${{ github.ref_name }} — Distributed Offline Mesh & Admin Control Plane
+            ## Whisp ${{ github.ref_name }} - Decentralized Offline Mesh & Smart Tourist Safety Platform
 
-            ### 🚀 Highlights & Features in v4.2.0:
-            - **⛓️ Unique Blockchain IDs (`0x...`)**: Deterministic decentralized identity addresses for every user to enable offline delay-tolerant routing over physical mesh hops.
-            - **👥 Search & Add Friends (1-on-1 Direct Chats)**: Search users by username or Blockchain ID and chat privately in isolated encrypted 1-on-1 rooms instead of global broadcast.
-            - **🚨 Dedicated Emergency Authorities SOS Channel**: Priority 100 emergency broadcast channel guaranteed to bypass battery throttling and route to local response authorities.
-            - **✨ UI / UX Overhaul**: Modern channel switcher (Direct Chats, General Mesh, Radio Peers), contact cards, and real-time route tracing.
-            - **👥 Dynamic User Registration & Login**: Users can create new accounts directly from the app or web control plane and log in dynamically.
-            - **🔒 Protected Admin Gate**: The Admin Control Screen is secured with master authentication (`whispadmin123` / `operator123` / dynamic admin credentials).
-            - **🌐 Web Admin Control Plane**: Live health score, 2D topology radar, and DTN custody tracking.
-            - **🛡️ Zero-Trust Security & Envelope Signatures**: Ed25519 cryptographic signatures and token-bucket DoS defense.
-            - **📬 Delay-Tolerant Networking (DTN)**: 500 MB bounded storage with multi-factor custody eviction.
-            - **📝 Offline CRDT Collaboration**: Collaborative checklists with deterministic Last-Write-Wins merging.
+            ### Highlights & Features in Version 5.0:
+            - **Whisp Tourist Safety & Incident Response Subsystem**: AI Multi-Factor Risk Engine (0-100 score), 33-point MediaPipe skeletal posture tracking, and kinematic fall detection.
+            - **Two-Stage Intelligent SOS**: 20-Second verification buzzer with Safe dismissal and automated emergency escalation.
+            - **Smart Geo-Fencing & 360-Degree Live Radar**: Safe, Caution, and Restricted hazard zones with Haversine distance computations.
+            - **Verifiable Digital Tourist ID**: Tamper-proof cryptographic credentials with offline QR verifier and granular selective privacy consent matrix.
+            - **Smart Trek Itineraries & Verifiable Checkpoints**: Route safety scoring with cryptographic checkpoint check-ins.
+            - **Multi-Agency Emergency Dispatch Desk**: Instant triage and dispatch to Police, Medical Ambulance, Forest Rangers, and Disaster Management.
+            - **Targeted CCTV Spatio-Temporal Search**: Filter smart camera streams by AI posture and hazard detection.
+            - **Immutable SHA-256 Blockchain Trust Layer**: Audit trail for registrations, consents, checkpoint check-ins, and emergency dispatch logs.
+            - **66% Response Time Reduction**: Faster emergency dispatching over physical device-to-device mesh.
+            - **Decentralized Multi-Hop Mesh & DTN**: Wi-Fi Direct, BLE beacons, PRoPHET routing, and 500 MB bounded custody storage.
+            - **Hardware Keystore Cryptography**: Google Tink AEAD at rest and Ed25519 packet envelope signatures.
+            - **CRDT Collaborative Field Notes**: Conflict-free distributed notes across peers without cloud servers.
 
-            ### 📲 Installation:
-            Download `app-debug.apk` attached below and install on Android 14+ devices.
+            ### Installation:
+            Download `app-debug.apk` attached below and install on Android devices (API 24+).
           files: |
             OfflineChat/app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

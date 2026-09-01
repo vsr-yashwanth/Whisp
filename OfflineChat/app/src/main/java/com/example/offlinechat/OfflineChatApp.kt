@@ -50,6 +50,8 @@ class OfflineChatApp : Application() {
         private set
     lateinit var mobilityClassifier: MobilityClassifier
         private set
+    lateinit var safetyManager: com.example.offlinechat.safety.WhispSafetyManager
+        private set
     val rateLimiter = com.example.offlinechat.security.AntiFloodRateLimiter()
 
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -63,6 +65,7 @@ class OfflineChatApp : Application() {
         deduplicationCache = DeduplicationCache(maxCapacity = 5000)
         batteryRelayPolicy = BatteryRelayPolicy(this)
         transport = HybridMeshTransport(this)
+        safetyManager = com.example.offlinechat.safety.WhispSafetyManager.getInstance(this, database.chatDao(), transport)
         webServerManager = WebServerManager(this, database.chatDao(), transport, cryptoManager)
 
         dtnEngine = DtnEngine(
@@ -190,7 +193,8 @@ class OfflineChatApp : Application() {
                         stampedPacket.recipientId == transport.localId ||
                         (currentUsername.isNotBlank() && stampedPacket.recipientId.equals(currentUsername, ignoreCase = true)) ||
                         (myBlockchainId.isNotBlank() && stampedPacket.recipientBlockchainId.equals(myBlockchainId, ignoreCase = true)) ||
-                        (stampedPacket.packetType == PacketType.SOS)
+                        (stampedPacket.packetType == PacketType.SOS) ||
+                        (isAuthority && stampedPacket.priority >= 50)
 
                 if (!isForMe) {
                     if (batteryRelayPolicy.shouldRelay(stampedPacket)) {
