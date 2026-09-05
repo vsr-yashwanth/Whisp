@@ -54,15 +54,14 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToAdmin: () -> Unit,
     onNavigateToCrdtNotes: () -> Unit = {},
-    onNavigateToTouristSafety: () -> Unit = {},
-    onNavigateToAuthorityDispatch: () -> Unit = {},
-    onLogout: () -> Unit = {}
-) {
+    
+
+    onNavigateToSettings: () -> Unit,
+    onNavigateToAdmin: () -> Unit,
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val userManager = remember { UserManager.getInstance(context) }
     val chatDao = remember { OfflineChatApp.instance.database.chatDao() }
-    val safetyManager = remember { OfflineChatApp.instance.safetyManager }
     val authPrefs = remember { context.getSharedPreferences("whisp_auth_prefs", Context.MODE_PRIVATE) }
     val loggedInUser = authPrefs.getString("logged_in_user", "User") ?: "User"
     val loggedInRole = authPrefs.getString("logged_in_role", "USER") ?: "USER"
@@ -70,10 +69,8 @@ fun HomeScreen(
     val myBlockchainId = remember(loggedInUser) { UserAccount.computeBlockchainId(loggedInUser) }
     val friendsList by chatDao.getFriends().collectAsState(initial = emptyList())
     val activeIncidents by chatDao.getActiveIncidentCount().collectAsState(initial = 0)
-    val aiRisk by safetyManager.aiRisk.collectAsState()
-    val currentZone by safetyManager.currentZone.collectAsState()
 
-    // 0: CHATS, 1: SAFETY, 2: IDENTITY, 3: NETWORK
+    // 0: CHATS, 1: IDENTITY, 2: NETWORK
     var selectedNavTab by remember { mutableStateOf(0) }
     var chatSearchQuery by remember { mutableStateOf("") }
     var showAdminGateDialog by remember { mutableStateOf(false) }
@@ -187,19 +184,6 @@ fun HomeScreen(
                     )
                 )
                 NavigationBarItem(
-                    selected = selectedNavTab == 1,
-                    onClick = { selectedNavTab = 1 },
-                    icon = { Icon(Icons.Rounded.LocationOn, contentDescription = "Safety") },
-                    label = { Text("Safety", fontSize = 11.sp, fontWeight = if (selectedNavTab == 1) FontWeight.Bold else FontWeight.Normal) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color(0xFF38BDF8),
-                        selectedTextColor = Color(0xFF38BDF8),
-                        unselectedIconColor = TextMuted,
-                        unselectedTextColor = TextMuted,
-                        indicatorColor = Color(0xFF38BDF8).copy(alpha = 0.15f)
-                    )
-                )
-                NavigationBarItem(
                     selected = selectedNavTab == 2,
                     onClick = { selectedNavTab = 2 },
                     icon = { Icon(Icons.Rounded.AccountBox, contentDescription = "Identity") },
@@ -256,21 +240,13 @@ fun HomeScreen(
                     onNavigateToChat = onNavigateToChat,
                     onOpenAddFriend = { showAddFriendDialog = true }
                 )
-                1 -> SafetyTabView(
-                    aiRiskScore = aiRisk.score,
-                    aiRiskLevel = aiRisk.level.name,
-                    zoneName = currentZone?.name ?: "Open Trail",
-                    zoneType = currentZone?.zoneType ?: GeoZoneType.SAFE,
-                    onOpenFullSafetyHub = onNavigateToTouristSafety,
-                    onOpenAuthorityDesk = onNavigateToAuthorityDispatch
-                )
-                2 -> IdentityTabView(
+                1 -> IdentityTabView(
                     username = loggedInUser,
                     role = loggedInRole,
                     blockchainId = myBlockchainId,
-                    onOpenFullHub = onNavigateToTouristSafety
+                    onOpenFullHub = onNavigateToSettings
                 )
-                3 -> NetworkTabView(
+                2 -> NetworkTabView(
                     discoveredPeers = discoveredPeers,
                     connectionState = connectionState,
                     isGlobalActive = isGlobalActive,
@@ -286,7 +262,6 @@ fun HomeScreen(
                             showAdminGateDialog = true
                         }
                     },
-                    onOpenAuthorityDesk = onNavigateToAuthorityDispatch
                 )
             }
         }

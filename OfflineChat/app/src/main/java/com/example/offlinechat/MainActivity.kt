@@ -158,10 +158,8 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToCrdtNotes = {
                                     navController.navigate("crdt_notes")
                                 },
-                                onNavigateToTouristSafety = {
                                     navController.navigate("tourist_safety")
                                 },
-                                onNavigateToAuthorityDispatch = {
                                     navController.navigate("authority_dispatch")
                                 },
                                 onLogout = handleLogout
