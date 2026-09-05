@@ -112,17 +112,6 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
-                        val handleLogout: () -> Unit = {
-                            authPrefs.edit()
-                                .putBoolean("is_logged_in", false)
-                                .remove("logged_in_user")
-                                .remove("logged_in_role")
-                                .apply()
-                            navController.navigate("auth") {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }
-
                         composable(
                             route = "home",
                             exitTransition = {
@@ -143,9 +132,6 @@ class MainActivity : ComponentActivity() {
                                 connectionState = connectionState,
                                 isGlobalActive = isGlobalActive,
                                 pairingRequest = pairingRequest,
-                                onConnectToPeer = { peer ->
-                                    transport.connectToPeer(peer)
-                                },
                                 onNavigateToChat = { peerId ->
                                     navController.navigate("chat/$peerId")
                                 },
@@ -157,12 +143,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNavigateToCrdtNotes = {
                                     navController.navigate("crdt_notes")
-                                },
-                                    navController.navigate("tourist_safety")
-                                },
-                                    navController.navigate("authority_dispatch")
-                                },
-                                onLogout = handleLogout
+                                }
                             )
                         }
                         composable(
@@ -193,7 +174,7 @@ class MainActivity : ComponentActivity() {
                             }
                         ) { backStackEntry ->
                             val peerId = backStackEntry.arguments?.getString("peerId") ?: "General Chat"
-                            
+
                             val chatViewModel: ChatViewModel = viewModel(
                                 key = "chat_$peerId",
                                 factory = remember(peerId) {
@@ -214,8 +195,7 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("settings") {
                             SettingsScreen(
-                                onNavigateBack = { navController.popBackStack() },
-                                onLogout = handleLogout
+                                onNavigateBack = { navController.popBackStack() }
                             )
                         }
                         composable("admin") {
@@ -225,17 +205,6 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("crdt_notes") {
                             com.example.offlinechat.ui.CrdtNotesScreen(
-                                onNavigateBack = { navController.popBackStack() }
-                            )
-                        }
-                        composable("tourist_safety") {
-                            com.example.offlinechat.ui.safety.TouristSafetyScreen(
-                                onNavigateBack = { navController.popBackStack() },
-                                onNavigateToAuthorityView = { navController.navigate("authority_dispatch") }
-                            )
-                        }
-                        composable("authority_dispatch") {
-                            com.example.offlinechat.ui.safety.AuthorityDispatchScreen(
                                 onNavigateBack = { navController.popBackStack() }
                             )
                         }

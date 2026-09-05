@@ -14,13 +14,7 @@ import androidx.room.RoomDatabase
         PeerEncounterEntity::class,
         CrdtOperationEntity::class,
         NetworkEpochEntity::class,
-        FriendContact::class,
-        TouristProfile::class,
-        GeoFenceZone::class,
-        TripItinerary::class,
-        SafetyIncident::class,
-        CctvCamera::class,
-        BlockchainBlockEntity::class
+        FriendContact::class
     ],
     version = 6,
     exportSchema = false

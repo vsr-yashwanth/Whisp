@@ -186,12 +186,6 @@ data class EmergencyActionRequest(
     val reason: String = "Emergency protocol invocation"
 )
 
-@Serializable
-data class SafetyAssignRequest(
-    val status: String = "DISPATCHED",
-    val assignedAgency: String = "POLICE_CONTROL",
-    val notes: String = "Dispatched from Web Control Plane"
-)
 
 class WebServerManager(
     private val context: Context,
@@ -642,66 +636,6 @@ class WebServerManager(
                         val req = call.receive<EmergencyActionRequest>()
                         auditManager.logAction("EMERGENCY_${req.action.uppercase()}", "SYSTEM", "SUCCESS", req.reason)
                         call.respond(mapOf("success" to true, "message" to "Emergency action '${req.action}' executed successfully"))
-                    }
-
-                    // ==========================================
-                    // 10. WHISP SMART TOURIST SAFETY CONTROL PLANE
-                    // ==========================================
-                    get("/api/v1/safety/overview") {
-                        val safety = OfflineChatApp.instance.safetyManager
-                        val activeIncidents = chatDao.getActiveIncidentCount().firstOrNull() ?: 0
-                        val risk = safety.aiRisk.value
-                        call.respond(
-                            mapOf(
-                                "status" to "OPERATIONAL",
-                                "activeIncidentsCount" to activeIncidents.toString(),
-                                "touristThreatLevel" to risk.level.name,
-                                "aiRiskScore" to risk.score.toString(),
-                                "currentZone" to (safety.currentZone.value?.name ?: "Open Trail"),
-                                "currentPose" to safety.currentPoseState.value.name,
-                                "responseTimeReductionPct" to "66",
-                                "baselineResponseTimeMin" to "18.2",
-                                "whispResponseTimeMin" to "6.1",
-                                "projectedIncidentsPrevented2026" to "350",
-                                "blockchainTrustActive" to "true"
-                            )
-                        )
-                    }
-
-                    get("/api/v1/safety/tourists") {
-                        val tourists = chatDao.getAllTouristProfiles().firstOrNull() ?: emptyList()
-                        call.respond(tourists)
-                    }
-
-                    get("/api/v1/safety/incidents") {
-                        val incidents = chatDao.getAllIncidents().firstOrNull() ?: emptyList()
-                        call.respond(incidents)
-                    }
-
-                    post("/api/v1/safety/incidents/{id}/assign") {
-                        val incidentId = call.parameters["id"] ?: ""
-                        val req = try { call.receive<SafetyAssignRequest>() } catch (e: Exception) { SafetyAssignRequest() }
-                        val safety = OfflineChatApp.instance.safetyManager
-                        val st = try { com.example.offlinechat.data.IncidentStatus.valueOf(req.status) } catch (e: Exception) { com.example.offlinechat.data.IncidentStatus.DISPATCHED }
-                        val agency = try { com.example.offlinechat.data.ResponseAgency.valueOf(req.assignedAgency) } catch (e: Exception) { com.example.offlinechat.data.ResponseAgency.POLICE_CONTROL }
-                        safety.updateIncidentStatus(incidentId, st, agency, req.notes)
-                        auditManager.logAction("SAFETY_INCIDENT_DISPATCH", incidentId, "SUCCESS", "Agency: ${agency.name}, Status: ${st.name}")
-                        call.respond(mapOf("success" to true, "message" to "Incident $incidentId assigned to ${agency.name}"))
-                    }
-
-                    get("/api/v1/safety/geofences") {
-                        val zones = chatDao.getAllGeoFenceZones().firstOrNull() ?: emptyList()
-                        call.respond(zones)
-                    }
-
-                    get("/api/v1/safety/cctv") {
-                        val cameras = chatDao.getAllCctvCameras().firstOrNull() ?: emptyList()
-                        call.respond(cameras)
-                    }
-
-                    get("/api/v1/safety/blockchain") {
-                        val blocks = chatDao.getAllBlockchainBlocks().firstOrNull() ?: emptyList()
-                        call.respond(blocks)
                     }
 
                     // ==========================================

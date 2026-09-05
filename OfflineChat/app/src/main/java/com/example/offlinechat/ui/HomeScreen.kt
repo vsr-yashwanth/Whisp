@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.offlinechat.OfflineChatApp
 import com.example.offlinechat.data.FriendContact
-import com.example.offlinechat.data.GeoZoneType
 import com.example.offlinechat.data.UserAccount
 import com.example.offlinechat.data.UserManager
 import com.example.offlinechat.network.ConnectionState
@@ -49,15 +48,11 @@ fun HomeScreen(
     connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     isGlobalActive: Boolean = false,
     pairingRequest: PairingRequest? = null,
-    onConnectToPeer: (Peer) -> Unit = {},
     onNavigateToChat: (String) -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAdmin: () -> Unit,
-    onNavigateToCrdtNotes: () -> Unit = {},
-    
-
-    onNavigateToSettings: () -> Unit,
-    onNavigateToAdmin: () -> Unit,
+    onNavigateToCrdtNotes: () -> Unit = {}
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val userManager = remember { UserManager.getInstance(context) }
@@ -65,10 +60,10 @@ fun HomeScreen(
     val authPrefs = remember { context.getSharedPreferences("whisp_auth_prefs", Context.MODE_PRIVATE) }
     val loggedInUser = authPrefs.getString("logged_in_user", "User") ?: "User"
     val loggedInRole = authPrefs.getString("logged_in_role", "USER") ?: "USER"
+    val isAdmin = loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN" || loggedInUser == "admin"
 
     val myBlockchainId = remember(loggedInUser) { UserAccount.computeBlockchainId(loggedInUser) }
     val friendsList by chatDao.getFriends().collectAsState(initial = emptyList())
-    val activeIncidents by chatDao.getActiveIncidentCount().collectAsState(initial = 0)
 
     // 0: CHATS, 1: IDENTITY, 2: NETWORK
     var selectedNavTab by remember { mutableStateOf(0) }
@@ -152,9 +147,6 @@ fun HomeScreen(
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = TitaniumLight, modifier = Modifier.size(20.dp))
                     }
-                    IconButton(onClick = onLogout) {
-                        Icon(Icons.Rounded.ExitToApp, contentDescription = "Log Out", tint = TitaniumLight, modifier = Modifier.size(20.dp))
-                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = ObsidianBlack,
@@ -184,10 +176,10 @@ fun HomeScreen(
                     )
                 )
                 NavigationBarItem(
-                    selected = selectedNavTab == 2,
-                    onClick = { selectedNavTab = 2 },
+                    selected = selectedNavTab == 1,
+                    onClick = { selectedNavTab == 1 },
                     icon = { Icon(Icons.Rounded.AccountBox, contentDescription = "Identity") },
-                    label = { Text("Identity", fontSize = 11.sp, fontWeight = if (selectedNavTab == 2) FontWeight.Bold else FontWeight.Normal) },
+                    label = { Text("Identity", fontSize = 11.sp, fontWeight = if (selectedNavTab == 1) FontWeight.Bold else FontWeight.Normal) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = Color(0xFFFBBF24),
                         selectedTextColor = Color(0xFFFBBF24),
@@ -197,10 +189,10 @@ fun HomeScreen(
                     )
                 )
                 NavigationBarItem(
-                    selected = selectedNavTab == 3,
-                    onClick = { selectedNavTab = 3 },
+                    selected = selectedNavTab == 2,
+                    onClick = { selectedNavTab == 2 },
                     icon = { Icon(Icons.Rounded.Share, contentDescription = "Network") },
-                    label = { Text("Network", fontSize = 11.sp, fontWeight = if (selectedNavTab == 3) FontWeight.Bold else FontWeight.Normal) },
+                    label = { Text("Network", fontSize = 11.sp, fontWeight = if (selectedNavTab == 2) FontWeight.Bold else FontWeight.Normal) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = PureWhite,
                         selectedTextColor = PureWhite,
@@ -236,9 +228,7 @@ fun HomeScreen(
                     chatSearchQuery = chatSearchQuery,
                     onSearchQueryChange = { chatSearchQuery = it },
                     friendsList = friendsList,
-                    activeIncidents = activeIncidents,
-                    onNavigateToChat = onNavigateToChat,
-                    onOpenAddFriend = { showAddFriendDialog = true }
+                    onNavigateToChat = onNavigateToChat
                 )
                 1 -> IdentityTabView(
                     username = loggedInUser,
@@ -250,18 +240,14 @@ fun HomeScreen(
                     discoveredPeers = discoveredPeers,
                     connectionState = connectionState,
                     isGlobalActive = isGlobalActive,
-                    loggedInRole = loggedInRole,
-                    loggedInUser = loggedInUser,
-                    onConnectToPeer = onConnectToPeer,
-                    onNavigateToChat = onNavigateToChat,
                     onOpenCrdtNotes = onNavigateToCrdtNotes,
                     onOpenAdmin = {
-                        if (loggedInRole == "SUPER_ADMIN" || loggedInRole == "NETWORK_ADMIN" || loggedInUser == "admin") {
+                        if (isAdmin) {
                             onNavigateToAdmin()
                         } else {
                             showAdminGateDialog = true
                         }
-                    },
+                    }
                 )
             }
         }
@@ -276,9 +262,7 @@ private fun ChatsTabView(
     chatSearchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     friendsList: List<FriendContact>,
-    activeIncidents: Int,
-    onNavigateToChat: (String) -> Unit,
-    onOpenAddFriend: () -> Unit
+    onNavigateToChat: (String) -> Unit
 ) {
     val filteredFriends = remember(chatSearchQuery, friendsList) {
         if (chatSearchQuery.isBlank()) friendsList
@@ -321,59 +305,6 @@ private fun ChatsTabView(
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
-        }
-
-        // Dedicated Emergency Authorities SOS Channel
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(Color(0xFF261014), Color(0xFF190C10))
-                        )
-                    )
-                    .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), RoundedCornerShape(20.dp))
-                    .clickable { onNavigateToChat("emergency_authorities") }
-                    .padding(18.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFEF4444).copy(alpha = 0.2f))
-                            .border(1.dp, Color(0xFFEF4444), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Rounded.Warning, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(24.dp))
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("EMERGENCY AUTHORITIES SOS", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(0xFFEF4444))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text("PRIORITY 100", fontSize = 8.sp, fontWeight = FontWeight.Black, color = ObsidianBlack)
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = if (activeIncidents > 0) "$activeIncidents ACTIVE INCIDENTS REPORTED" else "Dedicated Police & Medical Emergency Channel",
-                            color = if (activeIncidents > 0) Color(0xFFFCA5A5) else TextSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = if (activeIncidents > 0) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                    Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
-                }
-            }
         }
 
         // Global Mesh Broadcast Channel
@@ -503,147 +434,7 @@ private fun ChatsTabView(
 }
 
 // =========================================================================
-// TAB 1: SAFETY RADAR & SOS
-// =========================================================================
-@Composable
-private fun SafetyTabView(
-    aiRiskScore: Int,
-    aiRiskLevel: String,
-    zoneName: String,
-    zoneType: GeoZoneType,
-    onOpenFullSafetyHub: () -> Unit,
-    onOpenAuthorityDesk: () -> Unit
-) {
-    val zoneColor = when (zoneType) {
-        GeoZoneType.SAFE -> SignalEmerald
-        GeoZoneType.CAUTION -> Color(0xFFFBBF24)
-        GeoZoneType.RESTRICTED -> Color(0xFFEF4444)
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Hero Card
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(Color(0xFF0F1E2A), Color(0xFF0B141C))
-                        )
-                    )
-                    .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f), RoundedCornerShape(24.dp))
-                    .padding(20.dp)
-            ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("WHISP TOURIST SAFETY HUB", fontSize = 11.sp, color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Smart Corridor Protection", fontSize = 18.sp, fontWeight = FontWeight.Black, color = PureWhite)
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SignalEmerald)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text("ACTIVE", color = ObsidianBlack, fontWeight = FontWeight.Black, fontSize = 9.sp)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(18.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // AI Risk Metric
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(SurfaceDark)
-                                .padding(12.dp)
-                        ) {
-                            Column {
-                                Text("AI RISK SCORE", fontSize = 9.sp, color = TextMuted, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text("$aiRiskScore%", fontSize = 18.sp, fontWeight = FontWeight.Black, color = if (aiRiskScore > 50) Color(0xFFEF4444) else SignalEmerald)
-                                Text(aiRiskLevel, fontSize = 10.sp, color = TextSecondary)
-                            }
-                        }
-
-                        // Current Zone Metric
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(SurfaceDark)
-                                .padding(12.dp)
-                        ) {
-                            Column {
-                                Text("CURRENT ZONE", fontSize = 9.sp, color = TextMuted, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(zoneName.take(14), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = zoneColor)
-                                Text(zoneType.name, fontSize = 10.sp, color = TextSecondary)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(18.dp))
-
-                    Button(
-                        onClick = onOpenFullSafetyHub,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38BDF8), contentColor = ObsidianBlack),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(44.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("OPEN 360 RADAR & AI POSE HUB", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Multi-Agency Authority Dispatch Quick Access
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFF181520))
-                    .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-                    .clickable { onOpenAuthorityDesk() }
-                    .padding(16.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Lock, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(22.dp))
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Multi-Agency Authority Dispatch Desk", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text("Police, Medical, and Rangers Incident Coordination", fontSize = 11.sp, color = TextSecondary)
-                    }
-                    Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
-                }
-            }
-        }
-    }
-}
-
-// =========================================================================
-// TAB 2: DIGITAL TOURIST ID & PRIVACY
+// TAB 1: DIGITAL IDENTITY & PRIVACY
 // =========================================================================
 @Composable
 private fun IdentityTabView(
@@ -681,7 +472,7 @@ private fun IdentityTabView(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("DIGITAL TOURIST PASS", color = SignalEmerald, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.5.sp)
+                        Text("DIGITAL IDENTITY PASS", color = SignalEmerald, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.5.sp)
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
@@ -694,7 +485,7 @@ private fun IdentityTabView(
 
                     Spacer(modifier = Modifier.height(18.dp))
                     Text(username.replaceFirstChar { it.uppercase() }, color = PureWhite, fontWeight = FontWeight.Black, fontSize = 22.sp)
-                    Text("Role: $role • Registered Tourist", fontSize = 12.sp, color = TextSecondary)
+                    Text("Role: $role • Verified Identity", fontSize = 12.sp, color = TextSecondary)
 
                     Spacer(modifier = Modifier.height(14.dp))
                     Divider(color = SurfaceBorderSubtle)
@@ -743,20 +534,15 @@ private fun IdentityTabView(
 }
 
 // =========================================================================
-// TAB 3: NETWORK & MESH GRID
+// TAB 2: NETWORK & MESH GRID
 // =========================================================================
 @Composable
 private fun NetworkTabView(
     discoveredPeers: List<Peer>,
     connectionState: ConnectionState,
     isGlobalActive: Boolean,
-    loggedInRole: String,
-    loggedInUser: String,
-    onConnectToPeer: (Peer) -> Unit,
-    onNavigateToChat: (String) -> Unit,
     onOpenCrdtNotes: () -> Unit,
-    onOpenAdmin: () -> Unit,
-    onOpenAuthorityDesk: () -> Unit
+    onOpenAdmin: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
