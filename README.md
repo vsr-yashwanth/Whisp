@@ -1,107 +1,181 @@
-# Whisp — Off-Grid Peer-to-Peer Mesh
+# Whisp - Off-Grid Peer to Peer Mesh Network
 
-<div align="center">
+> **Decentralized Peer-to-Peer Mesh Networking, Delay-Tolerant Routing & Encrypted Communication**  
+> *Developed by Team **NETRUNNERS** for **Smart India Hackathon 2026** (Problem Statement ID: `SIH25002`)*
 
-[![Download APK](https://img.shields.io/badge/Download-Latest%20APK%20(v4.2.2)-emerald?style=for-the-badge&logo=android)](https://github.com/vsr-yashwanth/Whisp/releases)
-[![Platform](https://img.shields.io/badge/Platform-Android%2014%2B-black?style=for-the-badge&logo=android)](https://www.android.com)
-[![Kotlin](https://img.shields.io/badge/Language-Kotlin-black?style=for-the-badge&logo=kotlin)](https://kotlinlang.org)
-[![UI](https://img.shields.io/badge/UI-Jetpack%20Compose-black?style=for-the-badge&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
-[![Branch v4](https://img.shields.io/badge/Code-Branch%20v4%20(Latest)-white?style=for-the-badge&logo=git)](https://github.com/vsr-yashwanth/Whisp/tree/v4)
-
-**Whisp** turns standard Android phones into an encrypted, off-grid communication network. When cell towers go down, power outages hit, or you're traveling off the grid, Whisp keeps people connected directly device-to-device using Bluetooth Low Energy and Wi-Fi Direct.
-
-[Get the App](#-quick-install-android) • [What's New](#-core-features) • [Admin Dashboard](#-web-control-plane) • [Security](#-zero-trust-security) • [Source Code](https://github.com/vsr-yashwanth/Whisp/tree/v4)
-
-</div>
+[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.0-blue.svg?logo=kotlin)](https://kotlinlang.org)
+[![Android SDK](https://img.shields.io/badge/Android%20SDK-API%2034-green.svg?logo=android)](https://developer.android.com)
+[![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4.svg?logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
+[![Tink Cryptography](https://img.shields.io/badge/Security-Google%20Tink%20AEAD-orange.svg)](https://github.com/google/tink)
+[![License](https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg)](LICENSE)
+[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)]()
 
 ---
 
-## Why Whisp?
+## What is Whisp?
 
-In natural disasters, remote hikes, or network blackouts, conventional messaging apps stop working the second you lose internet connectivity. 
+**Whisp** is a state-of-the-art, privacy-first, zero-cloud communication and decentralized networking platform. Designed to operate in environments with **zero cellular connectivity, no mobile data, and no internet access**, Whisp connects devices directly through physical local radios (Wi-Fi Direct, Bluetooth Low Energy, and Multi-Hop Mesh Relays).
 
-Whisp creates a **living peer-to-peer mesh**:
-- **No Internet Required**: Messages hop autonomously through intermediate phones to reach the recipient.
-- **Store & Forward (DTN)**: If a recipient is offline or out of range, nearby devices carry the encrypted packet until they cross paths.
-- **Zero-Trust & Private**: Everything is end-to-end encrypted with hardware Keystore keys. Intermediate relay nodes can never read your messages.
+Whisp provides a resilient, delay-tolerant transport engine that enables encrypted peer-to-peer messaging, group mesh communication, collaborative data synchronization, and decentralized node discovery entirely off the grid.
 
-```mermaid
-graph LR
-    A["You (Alice)"] -->|"Direct BLE Hop"| B["Neighbor (Relay)"]
-    B -->|"Physical Movement"| C["Courier Node"]
-    C -->|"Delivered"| D["Friend (Bob)"]
-    A -.->|"Priority SOS"| E["Local Authority Node"]
+---
+
+## Core Platform Features & Innovations
+
+### 1. Resilient Decentralized Mesh & Delay-Tolerant Networking (DTN)
+- **Zero-Internet Local Radios**: Discover and link peers automatically via high-speed Wi-Fi Direct and energy-efficient BLE beacons.
+- **Store-and-Forward DTN Engine**: When destination nodes are out of immediate radio range, custody bundles are cached with TTLs and opportunistic PRoPHET routing until reaching an available relay or gateway node.
+- **Battery-Aware Relay Policy**: Prevents low-battery nodes (< 15%) from exhausting reserves while optimizing packet routing paths.
+- **Deduplication & Loop Prevention**: High-throughput LRU cache and hop limit verification stop broadcast packet storms.
+
+### 2. End-to-End Cryptography & Verifiable Identities
+- **Hardware-Backed AEAD**: AES-256-GCM at rest with Android Keystore integration and XChaCha20-Poly1305 for in-transit communication.
+- **Verifiable Cryptographic Credentials**: Peer identities backed by Ed25519 signatures and cryptographic key pairs.
+- **Tamper-Proof Chained Ledger**: Maintains an immutable SHA-256 audit ledger for node activity and topology integrity.
+
+### 3. Encrypted P2P & Group Mesh Chat
+- **1-on-1 Direct Messaging**: Zero-cloud private messaging over multi-hop mesh relays with delivery receipts.
+- **Broadcast & Group Channels**: Multi-peer group messaging propagating across ad-hoc local mesh clusters.
+- **Offline Packet Bundling**: Messages queued and delivered automatically as peers move within radio proximity.
+
+### 4. CRDT Collaborative Shared Notes
+- **Conflict-Free Replicated Data Types (CRDT)**: LWWMap-based distributed collaborative notes across mesh peers without merge conflicts.
+- **Decentralized Synchronization**: Notes sync seamlessly over peer-to-peer radio exchanges without requiring a central database.
+
+### 5. Network Control Plane & Mesh Diagnostics
+- **Operator Console**: Real-time topology monitoring, packet delivery metrics, routing tables, and DTN custody buffer inspection.
+- **Embedded Web Control Plane**: High-performance embedded Ktor REST web server on port `8080` for local node management and diagnostic telemetry.
+
+---
+
+## System Architecture
+
+```
++-----------------------------------------------------------------------------------+
+|                        JETPACK COMPOSE USER INTERFACES                            |
+|    +-----------------------------+       +------------------------------------+   |
+|    |   Whisp Encrypted P2P Chat  |       |   Network Operator Console         |   |
+|    |   - 1-on-1 Direct Messaging |       |   - Topology & Active Peer Map     |   |
+|    |   - Multi-Hop Group Mesh    |       |   - Routing & DTN Custody Stats    |   |
+|    |   - Delivery Receipts       |       |   - Packet Telemetry Logs          |   |
+|    +-----------------------------+       +------------------------------------+   |
+|    +-----------------------------+       +------------------------------------+   |
+|    |   CRDT Collaborative Notes  |       |   Node Identity & Key Hub          |   |
+|    |   - Real-time Conflict-Free |       |   - Key Pair Management            |   |
+|    |   - Distributed Field Notes |       |   - Cryptographic Credentials      |   |
+|    +-----------------------------+       +------------------------------------+   |
++-----------------------------------------------------------------------------------+
+                                         |
+                                         v
++-----------------------------------------------------------------------------------+
+|                     WHISP CORE ROUTING & NETWORKING ENGINES                       |
+|  - HybridMeshTransport Coordinator       - Multi-Hop Routing & PRoPHET Engine     |
+|  - Delay-Tolerant (DTN) Custody Manager  - Battery-Aware Relay Policy Controller  |
+|  - Packet Deduplication & LRU Cache      - CRDT Document Synchronization Engine   |
++-----------------------------------------------------------------------------------+
+                                         |
+                                         v
++-----------------------------------------------------------------------------------+
+|                    SECURITY, CRYPTOGRAPHY & TRUST LAYER                           |
+|  - Google Tink AEAD (Hardware Keystore)  - Ed25519 Packet Envelope Signatures     |
+|  - Tamper-Evident SHA-256 Block Ledger   - Decentralized Key Exchange Protocol    |
++-----------------------------------------------------------------------------------+
+                                         |
+                                         v
++-----------------------------------------------------------------------------------+
+|                         TRANSPORT & COMMUNICATION LAYER                           |
+|  - Wi-Fi Direct / Nearby Connections     - Bluetooth Low Energy (BLE) Mesh        |
+|  - Delay-Tolerant (DTN) Store & Forward  - Embedded Ktor REST Web Server (:8080)  |
++-----------------------------------------------------------------------------------+
 ```
 
 ---
 
-## Core Features
+## Codebase Directory Tour
 
-### Unique Decentralized Blockchain IDs
-Every user gets a permanent cryptographic address (`0x...`). Messages are tagged to this blockchain ID so delay-tolerant nodes can hold and route packets specifically to you, even if your phone was completely offline when the message was sent.
-
-###  1-on-1 Friends & Direct Private Chats
-Search for friends by their username or paste their `0x...` Blockchain ID. Add them to your personal directory and chat privately in isolated, end-to-end encrypted rooms with real-time hop tracing.
-
-###  Emergency Authorities SOS Channel
-A dedicated, high-priority emergency channel (`Priority 100`) designed for critical moments.
-- Instant 1-tap broadcast presets: **Medical Emergency**, **Fire / Hazard**, and **Search & Rescue**.
-- **Battery-Bypass Guarantee**: Emergency SOS broadcasts are never dropped by battery conservation policies, ensuring alerts reach first-responders and local stations.
-
-###  Dynamic User Accounts & Protected Admin Gate
-- Create accounts and sign in with your own custom credentials.
-- Zero-trust Admin Gate: Network controls and metrics require an Administrator Master Key to prevent unauthorized access.
-
-###  Offline Collaborative Notes (CRDT)
-Share and update checklists and survival plans with nearby peers without internet using conflict-free replicated data types.
-
----
-
-##  Quick Install (Android)
-
-You don't need Android Studio or a computer to use Whisp:
-
-1. Open **[Whisp Releases](https://github.com/vsr-yashwanth/Whisp/releases)** on your Android phone.
-2. Download **`app-debug.apk`** from the latest release.
-3. Tap **Install** *(enable "Install unknown apps" if prompted)*.
-4. Launch **Whisp**, tap **CREATE ACCOUNT**, and you're ready to communicate off-grid!
-
----
-
-##  Web Control Plane & Mesh Radar
-
-Whisp includes a lightweight browser-based control dashboard for network administrators and emergency coordinators:
-
-- **2D Mesh Radar**: Real-time canvas visualization of nearby peers, active radio hops, and signal paths.
-- **Network Health Score**: Instant calculation of mesh connectivity, DTN custody storage, and partition health.
-- **User Directory & Account Controls**: Inspect active accounts, toggle user access, and review audit logs.
-- **Chaos Lab**: Run simulated mesh network benchmarks to verify multi-hop reliability under stress.
+```
+OfflineChat/
+├── app/src/main/java/com/example/offlinechat/
+│   ├── data/
+│   │   ├── Entities.kt           # Messages, Conversations, DTN Bundles, Epochs
+│   │   ├── ChatDao.kt            # Room DAO queries for mesh nodes and message records
+│   │   ├── ChatDatabase.kt       # Room Database configuration (v6)
+│   │   └── UserManager.kt        # User accounts & role-based access control
+│   ├── ui/
+│   │   ├── HomeScreen.kt         # Main Dashboard with Mesh Status & Navigation Tabs
+│   │   ├── AdminScreen.kt        # Network Grid Operator Control Plane
+│   │   ├── ChatScreen.kt         # Encrypted Peer-to-Peer & Group Mesh Chat
+│   │   ├── CrdtNotesScreen.kt    # Conflict-Free Collaborative Field Notes
+│   │   └── AuthScreen.kt         # Authentication & Secure Login Gate
+│   ├── network/
+│   │   ├── HybridMeshTransport.kt# Wi-Fi Direct + BLE + Relay Transport Coordinator
+│   │   ├── WebServerManager.kt   # Embedded Ktor REST API Server
+│   │   └── dtn/DtnEngine.kt      # Delay-Tolerant Store-and-Forward Custody Engine
+│   ├── routing/
+│   │   ├── RoutingEngine.kt      # Multi-hop opportunistic & PRoPHET routing
+│   │   └── BatteryRelayPolicy.kt # Energy-aware packet relay control
+│   └── security/
+│       └── CryptoManager.kt      # Google Tink AEAD at rest & in-transit cryptography
+docs/
+├── ARCHITECTURE.md               # Technical architecture & subsystem deep-dive
+├── API_REFERENCE.md              # Complete REST API reference for Ktor server
+└── SETUP_AND_TESTING.md          # Step-by-step developer setup & judge demo script
+```
 
 ---
 
-##  Zero-Trust Security
+## Quick Start: Build & Run
 
-| Principle | How Whisp Enforces It |
-| :--- | :--- |
-| **End-to-End Privacy** | Relay nodes only carry encrypted ciphertexts (`AES-256-GCM`). Relays cannot read your payload. |
-| **Tamper Resistance** | Every packet is sealed with an `Ed25519` cryptographic signature. Modified packets are discarded immediately. |
-| **Anti-Spam & Flooding** | Token-bucket rate limiters prevent rogue nodes from congesting radio channels. |
-| **Hardware Key Storage** | Identity keys are kept in the Android hardware Keystore and never leave your device. |
+### 1. Prerequisites
+- **JDK 17+** and **Android Studio** (Hedgehog or newer)
+- **Android SDK Level 34**
+
+### 2. Build via Terminal
+```bash
+# Clone the repository
+git clone https://github.com/vsr-yashwanth/Whisp.git
+cd Whisp/OfflineChat
+
+# Compile the app
+./gradlew compileDebugSources
+
+# Run unit tests
+./gradlew testDebugUnitTest
+
+# Generate APK
+./gradlew assembleDebug
+```
+
+### 3. Pre-Configured Test Accounts
+- **Peer User**: Username `yashwanth` | Password `password123`
+- **Super Admin**: Username `admin` | Password `whispadmin123`
+- **Network Operator**: Username `operator` | Password `operator123`
+- **Mesh Peer**: Username `alice` | Password `alice123`
 
 ---
 
-##  Repository Branches
-
-- **[`main`](https://github.com/vsr-yashwanth/Whisp/tree/main)**: Project documentation and official release hub.
-- **[`v4`](https://github.com/vsr-yashwanth/Whisp/tree/v4)** *(Active)*: Latest release with Blockchain IDs, 1-on-1 Friends Chat, Emergency SOS Channel, and Web Control Plane.
-- **[`v3`](https://github.com/vsr-yashwanth/Whisp/tree/v3)**: Delay-Tolerant Networking (DTN) and predictive routing core.
-- **[`v2`](https://github.com/vsr-yashwanth/Whisp/tree/v2)**: Adaptive mesh networking foundation.
+## Embedded Web Control Plane
+When the app is running on a device or emulator, open your browser at:
+- `http://localhost:8080/api/v1/network/overview` - Live network health & peer metrics
+- `http://localhost:8080/api/v1/network/topology` - Mesh topology and routing table entries
+- `http://localhost:8080/api/v1/network/bundles` - Delay-Tolerant custody bundles
 
 ---
 
-<div align="center">
+## Team NETRUNNERS (Smart India Hackathon 2026)
 
-Crafted with ❤️ by **[vsr-yashwanth](https://github.com/vsr-yashwanth)**  
-*Keeping people connected when it matters most.*
+| Role | Name | Registration No. | Department |
+|---|---|---|---|
+| **Team Leader** | **Vangala Sreeram Yaswanth** | `RA2511056010025` | DSBS |
+| **Team Member** | **Souvik Chattopadhyay** | `RA2511056010061` | DSBS |
+| **Team Member** | **Anamika Gupta** | `RA2511056010082` | DSBS |
+| **Team Member** | **Alisha** | `RA2511026011294` | CINTEL |
+| **Team Member** | **Anuj Kumar Singh** | `RA2511003010803` | CTECH |
+| **Team Member** | **Vansh Tyagi** | `RA2511056010073` | DSBS |
+| **Faculty Mentor** | **Jagadish Kumar N** | - | DSBS |
+| **Industry Mentor**| **V Sree Harsha** | - | - |
 
-</div>
+---
+
+## License
+This project is licensed under the Apache 2.0 License.

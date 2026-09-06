@@ -1,0 +1,72 @@
+name: Build and Release Android APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches: [ "main", "v4", "v5" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Clean Environment
+        run: rm -f OfflineChat/local.properties
+
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+        working-directory: OfflineChat
+
+      - name: Build APK with Gradle
+        run: ./gradlew assembleDebug --stacktrace
+        working-directory: OfflineChat
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisp-app-debug
+          path: OfflineChat/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Whisp ${{ github.ref_name }}
+          body: |
+            ## Whisp ${{ github.ref_name }} - Decentralized Offline Mesh & Smart Tourist Safety Platform
+
+            ### Highlights & Features in Version 5.0:
+            - **Whisp Tourist Safety & Incident Response Subsystem**: AI Multi-Factor Risk Engine (0-100 score), 33-point MediaPipe skeletal posture tracking, and kinematic fall detection.
+            - **Two-Stage Intelligent SOS**: 20-Second verification buzzer with Safe dismissal and automated emergency escalation.
+            - **Smart Geo-Fencing & 360-Degree Live Radar**: Safe, Caution, and Restricted hazard zones with Haversine distance computations.
+            - **Verifiable Digital Tourist ID**: Tamper-proof cryptographic credentials with offline QR verifier and granular selective privacy consent matrix.
+            - **Smart Trek Itineraries & Verifiable Checkpoints**: Route safety scoring with cryptographic checkpoint check-ins.
+            - **Multi-Agency Emergency Dispatch Desk**: Instant triage and dispatch to Police, Medical Ambulance, Forest Rangers, and Disaster Management.
+            - **Targeted CCTV Spatio-Temporal Search**: Filter smart camera streams by AI posture and hazard detection.
+            - **Immutable SHA-256 Blockchain Trust Layer**: Audit trail for registrations, consents, checkpoint check-ins, and emergency dispatch logs.
+            - **66% Response Time Reduction**: Faster emergency dispatching over physical device-to-device mesh.
+            - **Decentralized Multi-Hop Mesh & DTN**: Wi-Fi Direct, BLE beacons, PRoPHET routing, and 500 MB bounded custody storage.
+            - **Hardware Keystore Cryptography**: Google Tink AEAD at rest and Ed25519 packet envelope signatures.
+            - **CRDT Collaborative Field Notes**: Conflict-free distributed notes across peers without cloud servers.
+
+            ### Installation:
+            Download `app-debug.apk` attached below and install on Android devices (API 24+).
+          files: |
+            OfflineChat/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

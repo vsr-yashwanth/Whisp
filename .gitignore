@@ -1,0 +1,23 @@
+# Gradle & Build artifacts
+.gradle/
+OfflineChat/.gradle/
+**/.gradle/
+build/
+**/build/
+OfflineChat/build/
+OfflineChat/app/build/
+*.apk
+*.aab
+
+# Nested repo folders
+Whisp/
+
+# IDE and config files
+.idea/
+*.iml
+.DS_Store
+local.properties
+**/local.properties
+OfflineChat/local.properties
+*.log
+**/crash.log
