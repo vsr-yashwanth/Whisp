@@ -1,4 +1,4 @@
-# Whisp — Off-Grid Peer-to-Peer Mesh & SOS Platform
+# Whisp — Off-Grid Peer-to-Peer Mesh
 
 <div align="center">
 
