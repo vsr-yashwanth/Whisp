@@ -1,6 +1,9 @@
 package com.example.offlinechat
 
 import android.app.Application
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import android.util.Base64
 import android.util.Log
 import com.example.offlinechat.crdt.CrdtEngine
@@ -27,6 +30,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class OfflineChatApp : Application() {
+    init {
+        Log.d("OfflineChatApp", "OfflineChatApp class loaded")
+    }
 
     lateinit var database: ChatDatabase
         private set
@@ -58,58 +64,120 @@ class OfflineChatApp : Application() {
         super.onCreate()
         instance = this
 
-        database = ChatDatabase.getDatabase(this)
-        cryptoManager = CryptoManager(this)
-        deduplicationCache = DeduplicationCache(maxCapacity = 5000)
-        batteryRelayPolicy = BatteryRelayPolicy(this)
-        transport = HybridMeshTransport(this)
-        webServerManager = WebServerManager(this, database.chatDao(), transport, cryptoManager)
+        // Simple test log to see if onCreate is called at all
+        Log.d("OfflineChatApp", "onCreate() called")
 
-        dtnEngine = DtnEngine(
-            chatDao = database.chatDao(),
-            sendRawData = { data -> transport.sendData(data) }
-        )
-        dtnEngine.start()
-
-        partitionManager = PartitionManager(
-            localNodeId = transport.localId,
-            chatDao = database.chatDao(),
-            sendRawPacket = { data -> transport.sendData(data) }
-        )
-
-        crdtEngine = CrdtEngine(
-            localActorId = transport.localId,
-            chatDao = database.chatDao(),
-            sendRawPacket = { data -> transport.sendData(data) }
-        )
-
-        mobilityClassifier = MobilityClassifier(this)
-        mobilityClassifier.start()
-
-        storeAndForwardManager = StoreAndForwardManager(
-            chatDao = database.chatDao(),
-            sendFunction = { data -> transport.sendData(data) }
-        )
-        storeAndForwardManager.start()
-
-        // Listen for discovered peers: trigger partition manager & opportunistic DTN flushes
-        appScope.launch {
-            transport.discoveredPeers.collect { peers ->
-                partitionManager.onPeerTopologyUpdated(peers)
-                peers.forEach { peer ->
-                    storeAndForwardManager.onPeerConnectedOrDiscovered(peer.endpointId)
-                    dtnEngine.onPeerConnectedOrDiscovered(peer.endpointId)
-                }
-            }
+        try {
+            Log.d("OfflineChatApp", "Attempting to initialize database...")
+            database = ChatDatabase.getDatabase(this)
+            Log.d("OfflineChatApp", "Database initialized successfully")
+        } catch (e: Exception) {
+            Log.e("OfflineChatApp", "Failed to initialize database", e)
+            showInitializationError("Database initialization failed: ${e.message}")
+            return
         }
 
-        // Start background web server & mesh bridge
-        webServerManager.start()
+        try {
+            Log.d("OfflineChatApp", "Attempting to initialize crypto manager...")
+            cryptoManager = CryptoManager(this)
+            Log.d("OfflineChatApp", "Crypto manager initialized successfully")
+        } catch (e: Exception) {
+            Log.e("OfflineChatApp", "Failed to initialize crypto manager", e)
+            showInitializationError("Security initialization failed: ${e.message}")
+            return
+        }
 
-        // Start discovery & advertising
-        val myName = "User-${android.os.Build.MODEL.take(6)}"
-        transport.startAdvertising(myName)
-        transport.startDiscovery(myName)
+        try {
+            Log.d("OfflineChatApp", "Attempting to initialize other components...")
+            deduplicationCache = DeduplicationCache(maxCapacity = 5000)
+            Log.d("OfflineChatApp", "Deduplication cache initialized")
+            batteryRelayPolicy = BatteryRelayPolicy(this)
+            Log.d("OfflineChatApp", "Battery relay policy initialized")
+            transport = HybridMeshTransport(this)
+            Log.d("OfflineChatApp", "Hybrid mesh transport initialized")
+            webServerManager = WebServerManager(this, database.chatDao(), transport, cryptoManager)
+            Log.d("OfflineChatApp", "Web server manager initialized")
+
+            dtnEngine = DtnEngine(
+                chatDao = database.chatDao(),
+                sendRawData = { data -> transport.sendData(data) }
+            )
+            Log.d("OfflineChatApp", "DTN engine created")
+            dtnEngine.start()
+            Log.d("OfflineChatApp", "DTN engine started")
+
+            partitionManager = PartitionManager(
+                localNodeId = transport.localId,
+                chatDao = database.chatDao(),
+                sendRawPacket = { data -> transport.sendData(data) }
+            )
+            Log.d("OfflineChatApp", "Partition manager initialized")
+
+            crdtEngine = CrdtEngine(
+                localActorId = transport.localId,
+                chatDao = database.chatDao(),
+                sendRawPacket = { data -> transport.sendData(data) }
+            )
+            Log.d("OfflineChatApp", "CRDT engine initialized")
+
+            mobilityClassifier = MobilityClassifier(this)
+            Log.d("OfflineChatApp", "Mobility classifier created")
+            mobilityClassifier.start()
+            Log.d("OfflineChatApp", "Mobility classifier started")
+
+            storeAndForwardManager = StoreAndForwardManager(
+                chatDao = database.chatDao(),
+                sendFunction = { data -> transport.sendData(data) }
+            )
+            Log.d("OfflineChatApp", "Store and forward manager created")
+            storeAndForwardManager.start()
+            Log.d("OfflineChatApp", "Store and forward manager started")
+
+            // Listen for discovered peers: trigger partition manager & opportunistic DTN flushes
+            Log.d("OfflineChatApp", "Setting up peer discovery listeners...")
+            appScope.launch {
+                transport.discoveredPeers.collect { peers ->
+                    Log.d("OfflineChatApp", "Peer discovery update received")
+                    partitionManager.onPeerTopologyUpdated(peers)
+                    peers.forEach { peer ->
+                        storeAndForwardManager.onPeerConnectedOrDiscovered(peer.endpointId)
+                        dtnEngine.onPeerConnectedOrDiscovered(peer.endpointId)
+                    }
+                }
+            }
+
+            // Start background web server & mesh bridge
+            Log.d("OfflineChatApp", "Starting web server manager...")
+            webServerManager.start()
+            Log.d("OfflineChatApp", "Web server manager started")
+
+            // Start discovery & advertising
+            Log.d("OfflineChatApp", "Starting discovery and advertising...")
+            val myName = "User-${android.os.Build.MODEL.take(6)}"
+            transport.startAdvertising(myName)
+            transport.startDiscovery(myName)
+            Log.d("OfflineChatApp", "Discovery and advertising started")
+        } catch (e: Exception) {
+            Log.e("OfflineChatApp", "Failed to initialize app components", e)
+            showInitializationError("App component initialization failed: ${e.message}")
+            return
+        }
+    }
+
+    /**
+     * Shows initialization error and prevents app from continuing
+     */
+    private fun showInitializationError(message: String) {
+        // Log the error for debugging
+        Log.e("OfflineChatApp", "Initialization error: $message")
+
+        // Show a toast message to the user on the main thread
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(this, "Failed to start application: $message\nSee logs for details.", Toast.LENGTH_LONG).show()
+        }
+
+        // Optionally, we could finish the activity to prevent the app from continuing in a broken state
+        // For now, we'll let the user see the error but the app won't function properly
     }
 
     fun processIncomingRawPacket(data: ByteArray, transportType: String = "MESH") {

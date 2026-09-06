@@ -13,9 +13,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,169 +51,181 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("MainActivity", "onCreate() started")
 
         // Start background foreground service for web server
         try {
+            Log.d("MainActivity", "Starting foreground service")
             val serviceIntent = Intent(this, WebServerService::class.java)
             ContextCompat.startForegroundService(this, serviceIntent)
+            Log.d("MainActivity", "Foreground service started")
         } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to start foreground service", e)
             // Ignore if service startup is restricted
         }
 
         val authPrefs = getSharedPreferences("whisp_auth_prefs", MODE_PRIVATE)
+        Log.d("MainActivity", "Auth prefs retrieved")
         val initialStartDest = if (authPrefs.getBoolean("is_logged_in", false)) "home" else "auth"
+        Log.d("MainActivity", "Initial start dest: $initialStartDest")
 
-        setContent {
-            OfflineChatTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    val navController = rememberNavController()
-                    val discoveredPeers by transport.discoveredPeers.collectAsState()
-                    val connectionState by transport.connectionState.collectAsState()
-                    val pairingRequest by transport.pairingRequest.collectAsState()
-                    val isGlobalActive = if (transport is HybridMeshTransport) {
-                        (transport as HybridMeshTransport).isGlobalGatewayActive.collectAsState().value
-                    } else false
+        Log.d("MainActivity", "About to setContent")
+        try {
+            setContent {
+                OfflineChatTheme {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        val navController = rememberNavController()
+                        val discoveredPeers by transport.discoveredPeers.collectAsState()
+                        val connectionState by transport.connectionState.collectAsState()
+                        val pairingRequest by transport.pairingRequest.collectAsState()
+                        val isGlobalActive = if (transport is HybridMeshTransport) {
+                            (transport as HybridMeshTransport).isGlobalGatewayActive.collectAsState().value
+                        } else false
 
-                    // Request Runtime Permissions for Physical BLE & Wi-Fi Direct radios
-                    val permissionLauncher = rememberLauncherForActivityResult(
-                        contract = ActivityResultContracts.RequestMultiplePermissions()
-                    ) { _ ->
-                        val myName = "User-${android.os.Build.MODEL.take(6)}"
-                        transport.startAdvertising(myName)
-                        transport.startDiscovery(myName)
-                    }
-
-                    LaunchedEffect(Unit) {
-                        val permissionsToRequest = mutableListOf<String>()
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            permissionsToRequest.add(Manifest.permission.BLUETOOTH_SCAN)
-                            permissionsToRequest.add(Manifest.permission.BLUETOOTH_ADVERTISE)
-                            permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT)
-                            permissionsToRequest.add(Manifest.permission.NEARBY_WIFI_DEVICES)
-                            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
-                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            permissionsToRequest.add(Manifest.permission.BLUETOOTH_SCAN)
-                            permissionsToRequest.add(Manifest.permission.BLUETOOTH_ADVERTISE)
-                            permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT)
+                        // Request Runtime Permissions for Physical BLE & Wi-Fi Direct radios
+                        val permissionLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.RequestMultiplePermissions()
+                        ) { _ ->
+                            val myName = "User-${android.os.Build.MODEL.take(6)}"
+                            transport.startAdvertising(myName)
+                            transport.startDiscovery(myName)
                         }
-                        permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
-                        permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
 
-                        permissionLauncher.launch(permissionsToRequest.toTypedArray())
-                    }
+                        LaunchedEffect(Unit) {
+                            val permissionsToRequest = mutableListOf<String>()
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                permissionsToRequest.add(Manifest.permission.BLUETOOTH_SCAN)
+                                permissionsToRequest.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+                                permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT)
+                                permissionsToRequest.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+                                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                permissionsToRequest.add(Manifest.permission.BLUETOOTH_SCAN)
+                                permissionsToRequest.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+                                permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT)
+                            }
+                            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+                            permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
 
-                    NavHost(navController = navController, startDestination = initialStartDest) {
-                        composable("auth") {
-                            AuthScreen(
-                                onLoginSuccess = { _ ->
-                                    navController.navigate("home") {
-                                        popUpTo("auth") { inclusive = true }
+                            permissionLauncher.launch(permissionsToRequest.toTypedArray())
+                        }
+
+                        NavHost(navController = navController, startDestination = initialStartDest) {
+                            composable("auth") {
+                                AuthScreen(
+                                    onLoginSuccess = { _ ->
+                                        navController.navigate("home") {
+                                            popUpTo("auth") { inclusive = true }
+                                        }
                                     }
-                                }
-                            )
-                        }
-                        composable(
-                            route = "home",
-                            exitTransition = {
-                                slideOutHorizontally(
-                                    targetOffsetX = { it },
-                                    animationSpec = tween(350)
-                                )
-                            },
-                            popEnterTransition = {
-                                slideInHorizontally(
-                                    initialOffsetX = { it },
-                                    animationSpec = tween(350)
                                 )
                             }
-                        ) {
-                            HomeScreen(
-                                discoveredPeers = discoveredPeers,
-                                connectionState = connectionState,
-                                isGlobalActive = isGlobalActive,
-                                pairingRequest = pairingRequest,
-                                onNavigateToChat = { peerId ->
-                                    navController.navigate("chat/$peerId")
+                            composable(
+                                route = "home",
+                                exitTransition = {
+                                    slideOutHorizontally(
+                                        targetOffsetX = { it },
+                                        animationSpec = tween(350)
+                                    )
                                 },
-                                onNavigateToSettings = {
-                                    navController.navigate("settings")
-                                },
-                                onNavigateToAdmin = {
-                                    navController.navigate("admin")
-                                },
-                                onNavigateToCrdtNotes = {
-                                    navController.navigate("crdt_notes")
-                                }
-                            )
-                        }
-                        composable(
-                            route = "chat/{peerId}",
-                            enterTransition = {
-                                slideInHorizontally(
-                                    initialOffsetX = { -it },
-                                    animationSpec = tween(350)
-                                ) + fadeIn(animationSpec = tween(350))
-                            },
-                            exitTransition = {
-                                slideOutHorizontally(
-                                    targetOffsetX = { -it },
-                                    animationSpec = tween(350)
-                                ) + fadeOut(animationSpec = tween(350))
-                            },
-                            popEnterTransition = {
-                                slideInHorizontally(
-                                    initialOffsetX = { -it },
-                                    animationSpec = tween(350)
-                                ) + fadeIn(animationSpec = tween(350))
-                            },
-                            popExitTransition = {
-                                slideOutHorizontally(
-                                    targetOffsetX = { -it },
-                                    animationSpec = tween(350)
-                                ) + fadeOut(animationSpec = tween(350))
-                            }
-                        ) { backStackEntry ->
-                            val peerId = backStackEntry.arguments?.getString("peerId") ?: "General Chat"
-
-                            val chatViewModel: ChatViewModel = viewModel(
-                                key = "chat_$peerId",
-                                factory = remember(peerId) {
-                                    ChatViewModel.Factory(
-                                        transport = transport,
-                                        cryptoManager = cryptoManager,
-                                        chatDao = database.chatDao(),
-                                        conversationId = peerId
+                                popEnterTransition = {
+                                    slideInHorizontally(
+                                        initialOffsetX = { it },
+                                        animationSpec = tween(350)
                                     )
                                 }
-                            )
+                            ) {
+                                HomeScreen(
+                                    discoveredPeers = discoveredPeers,
+                                    connectionState = connectionState,
+                                    isGlobalActive = isGlobalActive,
+                                    pairingRequest = pairingRequest,
+                                    onNavigateToChat = { peerId ->
+                                        navController.navigate("chat/$peerId")
+                                    },
+                                    onNavigateToSettings = {
+                                        navController.navigate("settings")
+                                    },
+                                    onNavigateToAdmin = {
+                                        navController.navigate("admin")
+                                    },
+                                    onNavigateToCrdtNotes = {
+                                        navController.navigate("crdt_notes")
+                                    }
+                                )
+                            }
+                            composable(
+                                route = "chat/{peerId}",
+                                enterTransition = {
+                                    slideInHorizontally(
+                                        initialOffsetX = { -it },
+                                        animationSpec = tween(350)
+                                    ) + fadeIn(animationSpec = tween(350))
+                                },
+                                exitTransition = {
+                                    slideOutHorizontally(
+                                        targetOffsetX = { -it },
+                                        animationSpec = tween(350)
+                                    ) + fadeOut(animationSpec = tween(350))
+                                },
+                                popEnterTransition = {
+                                    slideInHorizontally(
+                                        initialOffsetX = { -it },
+                                        animationSpec = tween(350)
+                                    ) + fadeIn(animationSpec = tween(350))
+                                },
+                                popExitTransition = {
+                                    slideOutHorizontally(
+                                        targetOffsetX = { -it },
+                                        animationSpec = tween(350)
+                                    ) + fadeOut(animationSpec = tween(350))
+                                }
+                            ) { backStackEntry ->
+                                val peerId = backStackEntry.arguments?.getString("peerId") ?: "General Chat"
 
-                            ChatScreen(
-                                peerName = peerId,
-                                viewModel = chatViewModel,
-                                onNavigateBack = { navController.popBackStack() }
-                            )
-                        }
-                        composable("settings") {
-                            SettingsScreen(
-                                onNavigateBack = { navController.popBackStack() }
-                            )
-                        }
-                        composable("admin") {
-                            AdminScreen(
-                                onNavigateBack = { navController.popBackStack() }
-                            )
-                        }
-                        composable("crdt_notes") {
-                            com.example.offlinechat.ui.CrdtNotesScreen(
-                                onNavigateBack = { navController.popBackStack() }
-                            )
+                                val chatViewModel: ChatViewModel = viewModel(
+                                    key = "chat_$peerId",
+                                    factory = remember(peerId) {
+                                        ChatViewModel.Factory(
+                                            transport = transport,
+                                            cryptoManager = cryptoManager,
+                                            chatDao = database.chatDao(),
+                                            conversationId = peerId
+                                        )
+                                    }
+                                )
+
+                                ChatScreen(
+                                    peerName = peerId,
+                                    viewModel = chatViewModel,
+                                    onNavigateBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable("settings") {
+                                SettingsScreen(
+                                    onNavigateBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable("admin") {
+                                AdminScreen(
+                                    onNavigateBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable("crdt_notes") {
+                                com.example.offlinechat.ui.CrdtNotesScreen(
+                                    onNavigateBack = { navController.popBackStack() }
+                                )
+                            }
                         }
                     }
                 }
             }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to set content", e)
+            Toast.makeText(this, "Failed to start UI: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 }
