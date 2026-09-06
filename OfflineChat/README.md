@@ -1,6 +1,6 @@
 # OfflineChat - Whisp Android Application
 
-This folder contains the complete Android application implementation for **Whisp: Decentralized Offline Mesh Communication & Smart Tourist Safety System**.
+This folder contains the complete Android application implementation for **Whisp: Off-Grid Peer to Peer Mesh Network**.
 
 ## Tech Stack & Dependencies
 - **Language**: Kotlin 1.9.0
@@ -11,13 +11,14 @@ This folder contains the complete Android application implementation for **Whisp
 - **Local Radios**: Wi-Fi Direct / Google Nearby Connections API + Bluetooth Low Energy (BLE) Advertisers & Scanners
 
 ## Key Source Code Paths
-- `app/src/main/java/com/example/offlinechat/safety/WhispSafetyManager.kt` - Central safety domain engine (AI Risk, Geo-Fencing, 33-pt Pose, 2-stage SOS, Blockchain).
-- `app/src/main/java/com/example/offlinechat/ui/safety/TouristSafetyScreen.kt` - Tourist Safety Hub (Digital ID, QR card, Radar visualizer, AI Pose canvas).
-- `app/src/main/java/com/example/offlinechat/ui/safety/AuthorityDispatchScreen.kt` - Authority Dispatch Desk (Incident triage, CCTV search, Zone monitoring, 66% impact analytics).
-- `app/src/main/java/com/example/offlinechat/data/SafetyEntities.kt` - Tourist profiles, GeoZones, Trips, Incidents, and Blockchain data models.
-- `app/src/main/java/com/example/offlinechat/network/WebServerManager.kt` - Ktor REST API endpoints (`/api/v1/safety/*`).
 - `app/src/main/java/com/example/offlinechat/network/HybridMeshTransport.kt` - Physical radio abstraction, multi-hop routing coordinator.
 - `app/src/main/java/com/example/offlinechat/network/dtn/DtnEngine.kt` - Delay-Tolerant Networking store-and-forward custody engine.
+- `app/src/main/java/com/example/offlinechat/routing/RoutingEngine.kt` - Multi-hop opportunistic & PRoPHET routing algorithms.
+- `app/src/main/java/com/example/offlinechat/routing/BatteryRelayPolicy.kt` - Energy-aware packet relay control.
+- `app/src/main/java/com/example/offlinechat/security/CryptoManager.kt` - Google Tink AEAD at-rest & in-transit cryptography.
+- `app/src/main/java/com/example/offlinechat/ui/ChatScreen.kt` - Encrypted peer-to-peer and group mesh chat.
+- `app/src/main/java/com/example/offlinechat/ui/CrdtNotesScreen.kt` - Conflict-Free Replicated Data Type (CRDT) collaborative field notes.
+- `app/src/main/java/com/example/offlinechat/network/WebServerManager.kt` - Embedded Ktor REST API Server.
 
 ## Build Instructions
 ```bash
